@@ -11,6 +11,9 @@
 #include <QProcess>
 #include <QFile>
 #include <QTextStream>
+#include <QScreen>
+#include <QStyle>
+#include <QApplication>
 
 class GameWindow : public QMainWindow
 {
@@ -57,11 +60,10 @@ private:
     float currentVolume;
     int targetY;
     
-    static const int WINDOW_WIDTH = 800;
-    static const int WINDOW_HEIGHT = 600;
-    static const int PLAYER_SIZE = 20;
-    static const int OBSTACLE_WIDTH = 30;
-    static const int OBSTACLE_GAP = 150;
+    // 게임 요소 크기
+    static const int PLAYER_SIZE = 30;  // 플레이어 크기 약간 증가
+    static const int OBSTACLE_WIDTH = 40;  // 장애물 너비 약간 증가
+    static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격 증가
 };
 
 #endif // GAMEWINDOW_H 

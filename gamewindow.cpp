@@ -4,6 +4,8 @@
 #include <QRandomGenerator>
 #include <QApplication>
 #include <QDebug>
+#include <QScreen>
+#include <QStyle>
 
 GameWindow::GameWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -19,7 +21,7 @@ GameWindow::GameWindow(QWidget *parent)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
-    , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
+    , targetY(0)  // setupGame에서 올바른 값으로 설정됨
 {
     // 부모 위젯이 설정된 후에 게임 초기화
     QTimer::singleShot(0, this, &GameWindow::setupGame);
@@ -50,13 +52,20 @@ GameWindow::~GameWindow()
 
 void GameWindow::setupGame()
 {
-    // 윈도우 설정
-    setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT);
-    setWindowTitle("Voice Control Game");
+    // 전체화면 설정
+    setWindowState(Qt::WindowFullScreen);
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     
-    // 플레이어 초기화
-    player = QRect(50, WINDOW_HEIGHT/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
-    targetY = WINDOW_HEIGHT/2 - PLAYER_SIZE/2;
+    // 현재 화면 크기 가져오기
+    QScreen *screen = QApplication::primaryScreen();
+    QRect screenGeometry = screen->geometry();
+    
+    // 창 크기를 화면 크기로 설정
+    setGeometry(screenGeometry);
+    
+    // 플레이어 초기화 (화면 크기에 맞게 조정)
+    player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
+    targetY = height()/2 - PLAYER_SIZE/2;
     
     // 타이머 설정
     gameTimer = new QTimer(this);
@@ -154,8 +163,8 @@ void GameWindow::readPitchData()
                     if (currentPitch > 0 && currentVolume > 0.1f) { // 볼륨이 일정 이상일 때만
                         int pitchRange = 37 - 1; // 1~37 범위
                         float normalizedPitch = (currentPitch - 1.0f) / pitchRange;
-                        targetY = (1.0f - normalizedPitch) * (WINDOW_HEIGHT - PLAYER_SIZE);
-                        targetY = qBound(0, targetY, WINDOW_HEIGHT - PLAYER_SIZE);
+                        targetY = (1.0f - normalizedPitch) * (height() - PLAYER_SIZE);
+                        targetY = qBound(0, targetY, height() - PLAYER_SIZE);
                     }
                 }
             }
@@ -212,7 +221,7 @@ void GameWindow::updateGame()
     if (moveUp && player.y() > 0) {
         player.translate(0, -playerSpeed);
     }
-    if (moveDown && player.y() < WINDOW_HEIGHT - PLAYER_SIZE) {
+    if (moveDown && player.y() < height() - PLAYER_SIZE) {
         player.translate(0, playerSpeed);
     }
     
@@ -244,14 +253,14 @@ void GameWindow::spawnObstacles()
 {
     if (!gameRunning) return;
     
-    int gapY = QRandomGenerator::global()->bounded(100, WINDOW_HEIGHT - 100);
+    int gapY = QRandomGenerator::global()->bounded(100, height() - 100);
     
     // 위쪽 장애물
-    QRect topObstacle(WINDOW_WIDTH, 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
     obstacles.append(topObstacle);
     
     // 아래쪽 장애물
-    QRect bottomObstacle(WINDOW_WIDTH, gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, WINDOW_HEIGHT - (gapY + OBSTACLE_GAP/2));
+    QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
     obstacles.append(bottomObstacle);
 }
 
