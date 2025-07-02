@@ -8,7 +8,10 @@
 #define SAMPLE_RATE 16000
 #define FRAME_SIZE 1024
 #define MIN_PITCH_HZ 80
-#define MAX_PITCH_HZ 1000
+#define MAX_PITCH_HZ 600
+#define MIN_SCORE 1
+#define MAX_SCORE 30
+#define MIN_VOLUME 300
 
 // 볼륨(RMS) 계산 함수
 static double calculate_rms(short *buffer, int size) {
@@ -61,19 +64,25 @@ double detect_pitch_int(short *buffer, int size, int sample_rate) {
 // 점수 계산 함수 (A2~A5, # 포함, 플랫 제외)
 static int get_pitch_score(const char *note, int octave) {
     // 점수는 A2(1) ~ A5(37)
-    static const char *score_notes[] = {"A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"};
-    int base_octave = 2;
-    int score = 0;
-    for (int o = base_octave; o <= 5; ++o) {
+    static const char *score_notes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    int start_octave = 2;
+    int start_note = 9; // "A"의 index
+    int score = 1;
+    int found = 0;
+    for (int o = start_octave; o <= 5; ++o) {
         for (int n = 0; n < 12; ++n) {
+            if (o == start_octave && n < start_note) continue; // A2부터 시작
             if (strcmp(note, score_notes[n]) == 0 && octave == o) {
-                return score + 1;
+                found = 1;
+                break;
             }
             score++;
-            // A5까지만
-            if (o == 5 && n == 0) return 37;
+            // A5(B5까지 포함, A5가 37점)
+            if (o == 5 && n == start_note) break;
         }
+        if (found) break;
     }
+    if (found) return score;
     return 0; // 범위 밖
 }
 
@@ -88,7 +97,16 @@ int main() {
     // ALSA PCM 캡처 장치 열기
     if ((pcm = snd_pcm_open(&pcm_handle, device, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
         fprintf(stderr, "ERROR: Cannot open PCM device %s: %s\n", device, snd_strerror(pcm));
-        return 1;
+        // 마이크가 없을 때 기본값으로 동작
+        FILE *fp = fopen("/tmp/pitch_score", "w");
+        if (fp) {
+            fprintf(fp, "15 500.0\n");  // 중간 높이와 적절한 볼륨으로 설정
+            fclose(fp);
+        }
+        while (1) {
+            usleep(50000);  // 50ms 대기
+        }
+        return 0;
     }
 
     // 하드웨어 파라미터 구조체 초기화
@@ -130,15 +148,16 @@ int main() {
         const char *note;
         int octave;
         pitch_to_note_and_octave(pitch, &note, &octave);
-        if (rms >= 300 && pitch < 1000) {
+        if (rms >= MIN_VOLUME && pitch < MAX_PITCH_HZ) {
             if (pitch >= MIN_PITCH_HZ && pitch <= MAX_PITCH_HZ) {
                 int score = get_pitch_score(note, octave);
-                printf("🎵 Pitch: %.2f Hz | Note: %s | Octave: %d | Score: %d | Volume(RMS): %.1f\n", pitch, note, octave, score, rms);
-                // 점수와 볼륨을 /tmp/pitch_score.dat에 저장 (int, float 순서)
-                FILE *fp = fopen("/tmp/pitch_score", "w");
-                if (fp) {
-                    fprintf(fp, "%d %.1f\n", score, rms);
-                    fclose(fp);
+                if (score >= MIN_SCORE && score <= MAX_SCORE) {
+                    printf("🎵 Pitch: %.2f Hz | Note: %s | Octave: %d | Score: %d | Volume(RMS): %.1f\n", pitch, note, octave, score, rms);
+                    FILE *fp = fopen("/tmp/pitch_score", "w");
+                    if (fp) {
+                        fprintf(fp, "%d %.1f\n", score, rms);
+                        fclose(fp);
+                    }
                 }
             } else {
                 printf("... (No valid pitch) | Volume(RMS): %.1f\n", rms);

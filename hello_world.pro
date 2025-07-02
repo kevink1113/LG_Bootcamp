@@ -15,9 +15,11 @@ TEMPLATE = app
 
 SOURCES += main.cpp\
         mainwindow.cpp\
-        gamewindow.cpp
+        gamewindow.cpp\
+        gameoverdialog.cpp
 
 HEADERS  += mainwindow.h\
+        gameoverdialog.h\
         gamewindow.h
 
 FORMS    += mainwindow.ui
