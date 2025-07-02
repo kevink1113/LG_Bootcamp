@@ -47,7 +47,6 @@ void GameOverDialog::setupUI(int score)
         "}"
         "QPushButton:hover {"
         "   background-color: #1976D2;"
-        "   transform: scale(1.05);"   // 호버 시 살짝 커지는 효과
         "}"
         "QPushButton:pressed {"
         "   background-color: #0D47A1;"

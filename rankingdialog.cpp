@@ -135,6 +135,11 @@ void RankingDialog::saveRankings()
 
 void RankingDialog::addScore(int score)
 {
+    // 0점인 경우 기록하지 않음
+    if (score <= 0) {
+        return;
+    }
+    
     // 새 점수 추가
     RankingRecord newRecord(score);
     rankings.append(newRecord);
