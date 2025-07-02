@@ -8,6 +8,7 @@
 #include <QStyle>
 #include <QFile>
 #include <QTextStream>
+#include <cmath>
 
 GameWindow::GameWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -66,6 +67,8 @@ void GameWindow::setupGame()
     // 창 크기와 위치를 화면에 맞게 설정
     setGeometry(screenGeometry);
     
+    // 기본 설정 사용
+    
     // 윈도우를 보이게 하고 전체화면으로 설정
     show();
     setWindowState(Qt::WindowFullScreen);
@@ -121,7 +124,7 @@ void GameWindow::startMicProcess()
     QString workingDir = QApplication::applicationDirPath();
     micProcess->setWorkingDirectory(workingDir);
     qDebug() << "Starting mic process in directory:" << workingDir;
-    micProcess->start("./mic");
+    micProcess->start("./mic", QStringList(), QIODevice::ReadWrite);
     
     // mic 프로세스 시작 실패 시 기본값 생성
     if (!micProcess->waitForStarted(1000)) {
@@ -218,21 +221,20 @@ void GameWindow::paintEvent(QPaintEvent *event)
     // 배경 그리기
     painter.fillRect(rect(), Qt::black);
 
-    // 별 그리기
-    painter.setBrush(QBrush(Qt::yellow));
-    painter.setPen(Qt::yellow);
-    
-    for (const QPointF &starCenter : stars) {
-        QPointF points[10];
-        for (int i = 0; i < 10; ++i) {
-            qreal radius = (i % 2 == 0) ? starSize/2 : starSize/2 * STAR_INNER_RATIO;
-            qreal angle = i * M_PI / 5;
-            points[i] = starCenter + QPointF(
-                radius * sin(angle),
-                radius * cos(angle)
-            );
-        }
-        painter.drawPolygon(points, 10);
+    // paintEvent에서는 별 생성하지 않음 - spawnObstacles에서 처리
+
+    // 별 그리기 (얼굴 포함)
+    painter.setPen(QPen(Qt::black, 2));
+    for (Star& star : stars) {
+        if (!star.active) continue;
+        
+        // 단순한 별 그리기
+        painter.setBrush(Qt::yellow);
+        painter.setPen(Qt::yellow);
+        QRectF starRect(star.pos.x() - starSize/2, star.pos.y() - starSize/2, 
+                       starSize, starSize);
+        painter.drawEllipse(starRect);
+    }
     
     // 플레이어 그리기
     painter.setBrush(Qt::white);
@@ -292,21 +294,24 @@ void GameWindow::updateGame()
     }
     
     // 별 이동 및 충돌 검사
-    for (int i = stars.size() - 1; i >= 0; --i) {
-        QPointF &star = stars[i];
-        star.setX(star.x() - 3);  // 장애물과 같은 속도로 이동
+    QRectF playerBounds(player.x() - 20, player.y() - 20, 40, 40);
+    
+    for (Star &star : stars) {
+        if (!star.active) continue;
+        
+        star.pos.setX(star.pos.x() - 3);  // 장애물과 같은 속도로 이동
         
         // 별과 플레이어의 충돌 검사
-        QRectF starRect(star.x() - starSize/2, star.y() - starSize/2, starSize, starSize);
-        if (player.intersects(starRect.toRect())) {
-            stars.removeAt(i);
+        QRectF starRect(star.pos.x() - starSize/2, star.pos.y() - starSize/2, starSize, starSize);
+        if (playerBounds.intersects(starRect)) {
+            star.active = false;
             score += 3;  // 별 획득 시 3점 추가
             continue;
         }
         
         // 화면 밖으로 나간 별 제거
-        if (star.x() + starSize < 0) {
-            stars.removeAt(i);
+        if (star.pos.x() + starSize < 0) {
+            star.active = false;
         }
     }
     
@@ -314,6 +319,19 @@ void GameWindow::updateGame()
     if (checkCollision()) {
         gameOver();
         return;
+    }
+    
+    // 비활성 별 주기적으로 정리 (매 10프레임마다)
+    static int cleanupCounter = 0;
+    if (++cleanupCounter >= 10) {
+        cleanupCounter = 0;
+        if (stars.size() > 20) {
+            for (int i = stars.size() - 1; i >= 0; --i) {
+                if (!stars[i].active) {
+                    stars.removeAt(i);
+                }
+            }
+        }
     }
     
     // 화면 갱신
@@ -339,7 +357,7 @@ void GameWindow::spawnObstacles()
         // 별을 장애물 사이 공간의 중앙에 배치
         int starX = width() + OBSTACLE_WIDTH/2;
         int starY = gapY;
-        stars.append(QPointF(starX, starY));
+        stars.append(Star(QPointF(starX, starY)));
     }
 }
 

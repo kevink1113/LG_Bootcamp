@@ -8,6 +8,7 @@
 #include <QList>
 #include <QRect>
 #include <QFont>
+#include <QPainterPath>
 #include <QProcess>
 #include <QFile>
 #include <QTextStream>
@@ -48,12 +49,18 @@ private:
     
     QRect player;
     QList<QRect> obstacles;
-    QList<QPointF> stars;  // 별 위치 목록
-    int starSize = 20;     // 별의 크기
+    struct Star {
+        QPointF pos;
+        bool active;
+        Star(QPointF p) : pos(p), active(true) {}
+    };
+    QList<Star> stars;  // 별 위치와 상태 목록
+    int starSize = 20;     // 별의 크기를 기본값으로 복원
     
     // 상수 정의
     static constexpr int STAR_POINTS = 5;  // 별의 꼭지점 수
     static constexpr float STAR_INNER_RATIO = 0.4f;  // 별의 내부 반지름 비율
+    static constexpr float STAR_FACE_RATIO = 0.3f;   // 얼굴 크기 비율
     
     int playerSpeed;
     int score;
