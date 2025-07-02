@@ -17,6 +17,7 @@ GameWindow::GameWindow(QWidget *parent)
     , pitchTimer(nullptr)
     , micProcess(nullptr)
     , pitchFile(nullptr)
+    , backButton(nullptr)
     , playerSpeed(5)
     , score(0)
     , gameRunning(false)
@@ -135,6 +136,9 @@ void GameWindow::setupGame()
     
     // 마이크 프로세스 시작
     startMicProcess();
+    
+    // 뒤로가기 버튼 설정
+    setupBackButton();
     
     // 초기 화면 그리기
     update();
@@ -291,13 +295,26 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.drawRect(obstacle);
     }
     
-    // 점수와 피치 정보 표시
+    // 점수와 피치 정보 표시 (오른쪽 상단)
     painter.setPen(Qt::white);
     QFont font("Arial", 12);
     painter.setFont(font);
-    painter.drawText(10, 25, QString("Score: %1").arg(score));
-    painter.drawText(10, 45, QString("Pitch: %1").arg(currentPitch));
-    painter.drawText(10, 65, QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2)));
+    
+    // 텍스트 너비 계산을 위한 QFontMetrics 사용
+    QFontMetrics fm(font);
+    QString scoreText = QString("Score: %1").arg(score);
+    QString pitchText = QString("Pitch: %1").arg(currentPitch);
+    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
+    
+    // 오른쪽 여백 설정
+    int rightMargin = 10;
+    int topMargin = 25;
+    int lineSpacing = 20;
+    
+    // 오른쪽 정렬하여 텍스트 그리기
+    painter.drawText(width() - fm.horizontalAdvance(scoreText) - rightMargin, topMargin, scoreText);
+    painter.drawText(width() - fm.horizontalAdvance(pitchText) - rightMargin, topMargin + lineSpacing, pitchText);
+    painter.drawText(width() - fm.horizontalAdvance(volumeText) - rightMargin, topMargin + lineSpacing * 2, volumeText);
 }
 
 void GameWindow::updateGame()
@@ -433,10 +450,45 @@ void GameWindow::gameOver()
         pitchTimer->stop();
     }
     
-    QMessageBox::information(this, "Game Over", 
-                           QString("Game Over!\nScore: %1").arg(score));
+    GameOverDialog *dialog = new GameOverDialog(score, this);
     
-    close();
+    connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
+        QWidget* mainWindow = parentWidget();
+        if (mainWindow) {
+            mainWindow->showNormal();
+            mainWindow->activateWindow();
+            mainWindow->raise();
+        }
+        close();
+    });
+    
+    connect(dialog, &GameOverDialog::rankingRequested, this, []() {
+        // Ranking 기능은 나중에 구현
+    });
+    
+    connect(dialog, &GameOverDialog::restartRequested, this, [this]() {
+        // 게임 재시작
+        gameRunning = true;
+        score = 0;
+        obstacles.clear();
+        stars.clear();
+        
+        // 플레이어 위치 초기화
+        player.moveTop(height()/2 - PLAYER_SIZE/2);
+        
+        // 타이머 재시작
+        if (gameTimer) gameTimer->start();
+        if (obstacleTimer) obstacleTimer->start();
+        if (pitchTimer) pitchTimer->start();
+        
+        // 마이크 프로세스 재시작
+        startMicProcess();
+        
+        update();
+    });
+    
+    dialog->exec();
+    dialog->deleteLater();
 }
 
 void GameWindow::keyPressEvent(QKeyEvent *event)
@@ -468,4 +520,63 @@ void GameWindow::keyReleaseEvent(QKeyEvent *event)
         moveDown = false;
         break;
     }
+}
+
+void GameWindow::setupBackButton()
+{
+    backButton = new QPushButton(this);
+    backButton->setFixedSize(50, 50);
+    backButton->move(10, 10);
+    
+    // 스타일 설정
+    QString buttonStyle = 
+        "QPushButton {"
+        "   background-color: rgba(255, 255, 255, 180);"
+        "   border: none;"
+        "   border-radius: 10px;"
+        "   padding: 5px;"
+        "}"
+        "QPushButton:hover {"
+        "   background-color: rgba(255, 255, 255, 220);"
+        "}"
+        "QPushButton:pressed {"
+        "   background-color: rgba(200, 200, 200, 220);"
+        "}";
+    backButton->setStyleSheet(buttonStyle);
+    
+    // 뒤로가기 아이콘 설정
+    QStyle *style = QApplication::style();
+    QIcon backIcon = style->standardIcon(QStyle::SP_ArrowBack);
+    backButton->setIcon(backIcon);
+    backButton->setIconSize(QSize(30, 30));
+    
+    connect(backButton, &QPushButton::clicked, this, &GameWindow::goBackToMainWindow);
+    backButton->show();
+    backButton->raise();
+}
+
+void GameWindow::goBackToMainWindow()
+{
+    // 게임 중지
+    gameRunning = false;
+    stopMicProcess();
+    
+    if (gameTimer) {
+        gameTimer->stop();
+    }
+    if (obstacleTimer) {
+        obstacleTimer->stop();
+    }
+    if (pitchTimer) {
+        pitchTimer->stop();
+    }
+    
+    // MainWindow로 돌아가기
+    QWidget* mainWindow = parentWidget();
+    if (mainWindow) {
+        mainWindow->showNormal();  // 창 모드로 표시
+        mainWindow->activateWindow();  // 창을 활성화
+        mainWindow->raise();  // 창을 맨 앞으로
+    }
+    close();  // 게임 창 닫기
 }

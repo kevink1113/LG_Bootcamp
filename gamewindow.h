@@ -15,6 +15,8 @@
 #include <QScreen>
 #include <QStyle>
 #include <QApplication>
+#include "gameoverdialog.h"
+#include <QPushButton>
 
 class GameWindow : public QMainWindow
 {
@@ -33,6 +35,7 @@ private slots:
     void updateGame();
     void spawnObstacles();
     void readPitchData();
+    void goBackToMainWindow();
 
 private:
     void setupGame();
@@ -40,12 +43,14 @@ private:
     bool checkCollision();
     void startMicProcess();
     void stopMicProcess();
+    void setupBackButton();
 
     QTimer *gameTimer;
     QTimer *obstacleTimer;
     QTimer *pitchTimer;
     QProcess *micProcess;
     QFile *pitchFile;
+    QPushButton *backButton;
     
     QRect player;
     QList<QRect> obstacles;
