@@ -27,16 +27,21 @@ GameWindow::GameWindow(QWidget *parent)
     , currentVolume(0.0f)
     , targetY(0)  // setupGame에서 올바른 값으로 설정됨
 {
-    // 부모 위젯이 설정된 후에 게임 초기화
-    QTimer::singleShot(0, this, &GameWindow::setupGame);
+    qDebug() << "GameWindow constructor called";
+    
+    // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
+    QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
 
 GameWindow::~GameWindow()
 {
+    qDebug() << "GameWindow destructor called";
     gameRunning = false;
     
+    // 마이크 프로세스 먼저 정지
     stopMicProcess();
     
+    // 타이머들 정리
     if (gameTimer) {
         gameTimer->stop();
         gameTimer->deleteLater();
@@ -52,6 +57,14 @@ GameWindow::~GameWindow()
         pitchTimer->deleteLater();
         pitchTimer = nullptr;
     }
+    
+    // 버튼 정리
+    if (backButton) {
+        backButton->deleteLater();
+        backButton = nullptr;
+    }
+    
+    qDebug() << "GameWindow destructor completed";
 }
 
 void GameWindow::setupGame()

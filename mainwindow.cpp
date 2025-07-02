@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QScreen>
 #include <QApplication>
+#include <QTimer>  // QTimer 추가
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -19,7 +20,9 @@ MainWindow::MainWindow(QWidget *parent) :
     settingsDialog(nullptr),
     volumeSlider(nullptr),
     rankingButton(nullptr),
-    rankingDialog(nullptr)
+    rankingDialog(nullptr),
+    isCreatingGameWindow(false),
+    gameWindowCreationTimer(nullptr)
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
@@ -64,7 +67,7 @@ MainWindow::MainWindow(QWidget *parent) :
     rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
     
     // 버튼 클릭 시그널 연결
-    connect(rankingButton, &QPushButton::clicked, this, &MainWindow::on_rankingButton_clicked);
+    connect(rankingButton, &QPushButton::clicked, this, &MainWindow::showRankingDialog);
 
     // 버튼 표시 및 정렬
     rankingButton->show();
@@ -72,16 +75,25 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->settingsButton->raise();  // 설정 버튼을 최상위로
     rankingButton->raise();       // 랭킹 버튼을 그 다음으로
     
+    // 게임 윈도우 생성 타이머 초기화
+    gameWindowCreationTimer = new QTimer(this);
+    gameWindowCreationTimer->setSingleShot(true);
+    connect(gameWindowCreationTimer, &QTimer::timeout, this, &MainWindow::createNewGameWindow);
+    
     createSettingsDialog();
 }
 
 MainWindow::~MainWindow()
 {
-    if (gameWindow) {
-        gameWindow->close();
-        gameWindow->deleteLater();
-        gameWindow = nullptr;
+    // 게임 윈도우 생성 타이머 정리
+    if (gameWindowCreationTimer) {
+        gameWindowCreationTimer->stop();
+        gameWindowCreationTimer->deleteLater();
+        gameWindowCreationTimer = nullptr;
     }
+    
+    // 게임 윈도우 정리
+    cleanupGameWindow();
     
     if (rankingDialog) {
         rankingDialog->close();
@@ -271,24 +283,99 @@ void MainWindow::onVolumeChanged(int value)
 
 void MainWindow::on_menuButton1_clicked()
 {
-    if (gameWindow) {
-        gameWindow->close();
-        gameWindow->deleteLater();
-        gameWindow = nullptr;
-    }
-    
-    qDebug() << "Creating new game window...";
-    // 게임 윈도우를 독립적인 윈도우로 생성
-    gameWindow = new GameWindow(nullptr);
-    
-    if (!gameWindow) {
-        qDebug() << "Failed to create game window!";
+    // 이미 게임 윈도우를 생성 중이면 무시
+    if (isCreatingGameWindow) {
+        qDebug() << "Game window creation already in progress, ignoring click";
         return;
     }
     
-    gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
-    qDebug() << "Initializing game window...";
-    // setupGame 함수에서 show()를 처리하므로 여기서는 호출하지 않음
+    qDebug() << "Game start button clicked";
+    
+    // 기존 게임 윈도우가 있으면 정리
+    if (gameWindow) {
+        qDebug() << "Cleaning up existing game window...";
+        isCreatingGameWindow = true;
+        cleanupGameWindow();
+        
+        // 정리 완료 후 새 게임 윈도우 생성
+        gameWindowCreationTimer->start(300);  // 300ms 후 생성
+    } else {
+        // 기존 게임 윈도우가 없으면 바로 생성
+        isCreatingGameWindow = true;
+        gameWindowCreationTimer->start(100);  // 100ms 후 생성
+    }
+}
+
+void MainWindow::cleanupGameWindow()
+{
+    if (gameWindow) {
+        qDebug() << "Cleaning up game window...";
+        
+        // 게임 윈도우의 모든 연결 해제
+        gameWindow->disconnect();
+        
+        // 게임 윈도우 숨기기 및 정리
+        gameWindow->hide();
+        gameWindow->close();
+        
+        // 메모리 정리
+        gameWindow->deleteLater();
+        gameWindow = nullptr;
+        
+        qDebug() << "Game window cleanup completed";
+    }
+}
+
+void MainWindow::createNewGameWindow()
+{
+    // 이중 생성 방지
+    if (gameWindow != nullptr) {
+        qDebug() << "Game window already exists, skipping creation";
+        isCreatingGameWindow = false;
+        return;
+    }
+    
+    qDebug() << "Creating new game window...";
+    
+    try {
+        // 게임 윈도우를 독립적인 윈도우로 생성
+        gameWindow = new GameWindow(nullptr);
+        
+        if (!gameWindow) {
+            qDebug() << "Failed to create game window!";
+            isCreatingGameWindow = false;
+            return;
+        }
+        
+        // 게임 윈도우가 닫힐 때의 정리 연결
+        connect(gameWindow, &GameWindow::destroyed, this, [this]() {
+            qDebug() << "Game window destroyed signal received";
+            gameWindow = nullptr;
+            isCreatingGameWindow = false;
+        });
+        
+        // 게임 윈도우 표시
+        gameWindow->show();
+        gameWindow->raise();
+        gameWindow->activateWindow();
+        
+        qDebug() << "Game window created and shown successfully";
+        
+    } catch (const std::exception& e) {
+        qDebug() << "Exception while creating game window:" << e.what();
+        if (gameWindow) {
+            gameWindow->deleteLater();
+            gameWindow = nullptr;
+        }
+    } catch (...) {
+        qDebug() << "Unknown exception while creating game window";
+        if (gameWindow) {
+            gameWindow->deleteLater();
+            gameWindow = nullptr;
+        }
+    }
+    
+    isCreatingGameWindow = false;
 }
 
 void MainWindow::on_menuButton2_clicked()
@@ -301,7 +388,7 @@ void MainWindow::on_menuButton3_clicked()
     QMessageBox::information(this, "Menu 3", "Menu 3 was selected!");
 }
 
-void MainWindow::on_rankingButton_clicked()
+void MainWindow::showRankingDialog()
 {
     // 기존 다이얼로그가 있으면 삭제
     if (rankingDialog) {
