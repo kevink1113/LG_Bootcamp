@@ -48,6 +48,12 @@ private:
     
     QRect player;
     QList<QRect> obstacles;
+    QList<QPointF> stars;  // 별 위치 목록
+    int starSize = 20;     // 별의 크기
+    
+    // 상수 정의
+    static constexpr int STAR_POINTS = 5;  // 별의 꼭지점 수
+    static constexpr float STAR_INNER_RATIO = 0.4f;  // 별의 내부 반지름 비율
     
     int playerSpeed;
     int score;
@@ -66,4 +72,4 @@ private:
     static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격 증가
 };
 
-#endif // GAMEWINDOW_H 
+#endif // GAMEWINDOW_H

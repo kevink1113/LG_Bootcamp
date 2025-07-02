@@ -6,6 +6,8 @@
 #include <QDebug>
 #include <QScreen>
 #include <QStyle>
+#include <QFile>
+#include <QTextStream>
 
 GameWindow::GameWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -52,13 +54,23 @@ GameWindow::~GameWindow()
 
 void GameWindow::setupGame()
 {
-    // 전체화면 설정
-    setWindowState(Qt::WindowFullScreen);
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    qDebug() << "Setting up game window...";
     
     // 현재 화면 크기 가져오기
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
+    
+    // 게임 윈도우 설정
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    
+    // 창 크기와 위치를 화면에 맞게 설정
+    setGeometry(screenGeometry);
+    
+    // 윈도우를 보이게 하고 전체화면으로 설정
+    show();
+    setWindowState(Qt::WindowFullScreen);
+    raise();
+    activateWindow();
     
     // 창 크기를 화면 크기로 설정
     setGeometry(screenGeometry);
@@ -90,6 +102,7 @@ void GameWindow::setupGame()
     gameRunning = true;
     score = 0;
     obstacles.clear();
+    stars.clear();
     
     // 마이크 프로세스 시작
     startMicProcess();
@@ -105,13 +118,36 @@ void GameWindow::startMicProcess()
     }
     
     micProcess = new QProcess(this);
-    micProcess->setWorkingDirectory("/mnt/nfs");
+    QString workingDir = QApplication::applicationDirPath();
+    micProcess->setWorkingDirectory(workingDir);
+    qDebug() << "Starting mic process in directory:" << workingDir;
     micProcess->start("./mic");
+    
+    // mic 프로세스 시작 실패 시 기본값 생성
+    if (!micProcess->waitForStarted(1000)) {
+        qDebug() << "Creating default pitch_score file...";
+        QFile defaultFile("/tmp/pitch_score");
+        if (defaultFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream stream(&defaultFile);
+            stream << "15 500.0\n";  // 중간 높이와 적절한 볼륨으로 설정
+            defaultFile.close();
+        }
+    }
     
     if (micProcess->waitForStarted()) {
         qDebug() << "Mic process started successfully";
     } else {
-        qDebug() << "Failed to start mic process:" << micProcess->errorString();
+        qDebug() << "Mic not available, game will run with default values";
+        // 마이크가 없어도 게임이 실행되도록 프로세스 유지
+        QFile file("/tmp/pitch_score");
+        if (!file.exists()) {
+            QFile defaultFile("/tmp/pitch_score");
+            if (defaultFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream stream(&defaultFile);
+                stream << "15 500.0\n";  // 중간 높이와 적절한 볼륨으로 설정
+                defaultFile.close();
+            }
+        }
     }
 }
 
@@ -181,6 +217,22 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
     // 배경 그리기
     painter.fillRect(rect(), Qt::black);
+
+    // 별 그리기
+    painter.setBrush(QBrush(Qt::yellow));
+    painter.setPen(Qt::yellow);
+    
+    for (const QPointF &starCenter : stars) {
+        QPointF points[10];
+        for (int i = 0; i < 10; ++i) {
+            qreal radius = (i % 2 == 0) ? starSize/2 : starSize/2 * STAR_INNER_RATIO;
+            qreal angle = i * M_PI / 5;
+            points[i] = starCenter + QPointF(
+                radius * sin(angle),
+                radius * cos(angle)
+            );
+        }
+        painter.drawPolygon(points, 10);
     
     // 플레이어 그리기
     painter.setBrush(Qt::white);
@@ -200,7 +252,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     painter.setFont(font);
     painter.drawText(10, 25, QString("Score: %1").arg(score));
     painter.drawText(10, 45, QString("Pitch: %1").arg(currentPitch));
-    painter.drawText(10, 65, QString("Volume: %.2f").arg(currentVolume));
+    painter.drawText(10, 65, QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2)));
 }
 
 void GameWindow::updateGame()
@@ -239,6 +291,25 @@ void GameWindow::updateGame()
         }
     }
     
+    // 별 이동 및 충돌 검사
+    for (int i = stars.size() - 1; i >= 0; --i) {
+        QPointF &star = stars[i];
+        star.setX(star.x() - 3);  // 장애물과 같은 속도로 이동
+        
+        // 별과 플레이어의 충돌 검사
+        QRectF starRect(star.x() - starSize/2, star.y() - starSize/2, starSize, starSize);
+        if (player.intersects(starRect.toRect())) {
+            stars.removeAt(i);
+            score += 3;  // 별 획득 시 3점 추가
+            continue;
+        }
+        
+        // 화면 밖으로 나간 별 제거
+        if (star.x() + starSize < 0) {
+            stars.removeAt(i);
+        }
+    }
+    
     // 충돌 검사
     if (checkCollision()) {
         gameOver();
@@ -262,6 +333,14 @@ void GameWindow::spawnObstacles()
     // 아래쪽 장애물
     QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
     obstacles.append(bottomObstacle);
+
+    // 50% 확률로 별 생성
+    if (QRandomGenerator::global()->bounded(2) == 0) {
+        // 별을 장애물 사이 공간의 중앙에 배치
+        int starX = width() + OBSTACLE_WIDTH/2;
+        int starY = gapY;
+        stars.append(QPointF(starX, starY));
+    }
 }
 
 bool GameWindow::checkCollision()
@@ -325,4 +404,4 @@ void GameWindow::keyReleaseEvent(QKeyEvent *event)
         moveDown = false;
         break;
     }
-} 
+}

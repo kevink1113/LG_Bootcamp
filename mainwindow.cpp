@@ -9,6 +9,8 @@
 #include <QSlider>
 #include <QProcess>
 #include <QCheckBox>
+#include <QScreen>
+#include <QApplication>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -38,6 +40,7 @@ void MainWindow::createSettingsDialog()
     settingsDialog->setWindowTitle("Settings");
     settingsDialog->setFixedSize(500, 400);  // 크기를 더 크게 조정
     settingsDialog->setModal(true);  // 모달 다이얼로그로 설정
+    settingsDialog->setWindowFlags(settingsDialog->windowFlags() | Qt::WindowStaysOnTopHint);  // 항상 위에 표시
 
     // 다이얼로그 스타일 설정 (테두리 추가)
     settingsDialog->setStyleSheet(R"(
@@ -172,11 +175,19 @@ void MainWindow::createSettingsDialog()
 
 void MainWindow::on_settingsButton_clicked()
 {
-    // 다이얼로그를 부모 위젯의 중앙에 표시
-    QPoint globalPos = mapToGlobal(rect().center());
-    QSize dialogSize = settingsDialog->size();
-    settingsDialog->move(globalPos.x() - dialogSize.width()/2, globalPos.y() - dialogSize.height()/2);
+    // 현재 화면의 중앙 위치 계산
+    QScreen *screen = QApplication::primaryScreen();
+    QRect screenGeometry = screen->geometry();
+    QPoint center = screenGeometry.center();
     
+    // 다이얼로그를 화면 중앙에 위치시킴
+    QSize dialogSize = settingsDialog->size();
+    settingsDialog->move(center.x() - dialogSize.width()/2, 
+                        center.y() - dialogSize.height()/2);
+    
+    // 다이얼로그를 최상위로 표시하고 활성화
+    settingsDialog->raise();
+    settingsDialog->activateWindow();
     settingsDialog->exec();
 }
 
@@ -202,9 +213,18 @@ void MainWindow::on_menuButton1_clicked()
         gameWindow = nullptr;
     }
     
-    gameWindow = new GameWindow();
+    qDebug() << "Creating new game window...";
+    // 게임 윈도우를 독립적인 윈도우로 생성
+    gameWindow = new GameWindow(nullptr);
+    
+    if (!gameWindow) {
+        qDebug() << "Failed to create game window!";
+        return;
+    }
+    
     gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
-    gameWindow->show();
+    qDebug() << "Initializing game window...";
+    // setupGame 함수에서 show()를 처리하므로 여기서는 호출하지 않음
 }
 
 void MainWindow::on_menuButton2_clicked()
