@@ -23,12 +23,15 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
     
+    // 설정 버튼 크기 설정 (크기 일관성을 위해)
+    ui->settingsButton->setFixedSize(50, 50);  // 크기 증가
+    
     // Ranking 버튼 생성
     rankingButton = new QPushButton(this);
     rankingButton->setObjectName("rankingButton");
-    rankingButton->setFixedSize(40, 40);  // 설정 버튼과 동일한 크기
+    rankingButton->setFixedSize(50, 50);  // 설정 버튼과 동일한 크기로 증가
     
-    // 버튼 스타일 설정
+    // 기본 버튼 스타일 설정
     QString buttonStyle = 
         "QPushButton {"
         "   background-color: rgba(255, 255, 255, 180);"
@@ -42,36 +45,29 @@ MainWindow::MainWindow(QWidget *parent) :
         "QPushButton:pressed {"
         "   background-color: rgba(200, 200, 200, 220);"
         "}";
-    // 두 버튼 모두 동일한 기본 스타일 적용
-    rankingButton->setStyleSheet(buttonStyle);
-    ui->settingsButton->setStyleSheet(buttonStyle);
-
-    // SVG 트로피 아이콘 설정 (임베디드 시스템 최적화)
-    QIcon trophyIcon(":/resources/trophy.svg");
-    rankingButton->setIcon(trophyIcon);
-    rankingButton->setIconSize(QSize(28, 28));  // 아이콘 크기 설정
     
-    // 버튼 스타일 설정 (임베디드 시스템 최적화)
-    QString iconStyle = buttonStyle +
-        "QPushButton {"
-        "   padding: 2px;"            // 최소한의 패딩
-        "   border-radius: 5px;"      // 둥근 모서리 (줄임)
-        "   color: #FFD700;"          // 금색으로 설정
-        "   background-color: rgba(0, 0, 0, 120);"  // 어두운 배경으로 대비 강화
-        "   font-weight: bold;"       // 굵게 표시
-        "}"
-        "QPushButton:hover {"
-        "   background-color: rgba(255, 223, 0, 180);"  // 호버 시 금색 배경
+    // 랭킹 버튼 스타일 (노란색 텍스트)
+    QString rankingStyle = buttonStyle + 
+        "QPushButton { "
+        "   padding: 3px; "  // 패딩 조정하여 텍스트 위치 최적화
+        "   font-weight: bold; "
+        "   color: #FFB700; "  // 진한 황금색
+        "   text-shadow: 1px 1px 2px #804000; "  // 그림자 효과
         "}";
-    rankingButton->setStyleSheet(iconStyle);
     
-    // 버튼 클릭 시그널 연결 (SIGNAL/SLOT 매크로 사용)
+    // 스타일 적용
+    ui->settingsButton->setStyleSheet(buttonStyle);  // 설정 버튼은 기본 스타일
+    rankingButton->setStyleSheet(rankingStyle);      // 랭킹 버튼은 커스텀 스타일
+    
+    // 랭킹 버튼 설정 - 설정 버튼과 동일한 크기로 텍스트 설정
+    rankingButton->setText("R");  // R 텍스트 사용
+    rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
+    
+    // 버튼 클릭 시그널 연결
     connect(rankingButton, SIGNAL(clicked()), this, SLOT(on_rankingButton_clicked()));
     
-    // 랭킹 버튼 표시
+    // 버튼 표시 및 정렬
     rankingButton->show();
-    
-    // 버튼 순서 설정 (설정 버튼이 최상위)
     updateButtonPositions();
     ui->settingsButton->raise();  // 설정 버튼을 최상위로
     rankingButton->raise();       // 랭킹 버튼을 그 다음으로
@@ -309,8 +305,8 @@ void MainWindow::updateButtonPositions()
     if (!rankingButton || !ui->settingsButton) return;
 
     // 버튼 크기와 여백 설정
-    const int margin = 20;
-    const int buttonSize = 40;  // 설정 버튼과 동일한 크기
+    const int margin = 0;       // 여백 제거하여 최상단에 배치
+    const int buttonSize = 50;  // 버튼 크기 유지
     const int spacing = 10;     // 버튼 사이 간격
 
     // 설정 버튼의 위치를 우측 상단으로 설정
