@@ -2,7 +2,7 @@
 #include <QFont>
 
 GameOverDialog::GameOverDialog(int score, QWidget *parent)
-    : QDialog(parent)
+    : QDialog(parent), currentScore(score), scoreAdded(false), rankingDialog(nullptr)
 {
     setWindowTitle("Game Over");
     setFixedSize(600, 400);  // 다이얼로그 크기 증가
@@ -64,7 +64,7 @@ void GameOverDialog::setupUI(int score)
     rankingButton = new QPushButton("Ranking", this);
     rankingButton->setStyleSheet(buttonStyle);
     rankingButton->setFixedSize(180, 70);  // 버튼 크기 증가
-    connect(rankingButton, &QPushButton::clicked, this, &GameOverDialog::rankingRequested);
+    connect(rankingButton, &QPushButton::clicked, this, &GameOverDialog::onRankingButtonClicked);
 
     // Restart 버튼
     restartButton = new QPushButton("Restart", this);
@@ -84,4 +84,30 @@ void GameOverDialog::setupUI(int score)
     mainLayout->addStretch(1);  // 상단 여백
     mainLayout->addLayout(buttonLayout);
     mainLayout->addStretch(1);  // 하단 여백 (버튼을 아래쪽으로)
+}
+
+void GameOverDialog::onRankingButtonClicked()
+{
+    // 기존 다이얼로그가 있으면 삭제
+    if (rankingDialog) {
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+    
+    // 점수가 아직 추가되지 않았다면 점수와 함께 랭킹 다이얼로그 생성
+    // 이미 추가되었다면 점수 없이 랭킹만 표시
+    if (!scoreAdded) {
+        rankingDialog = new RankingDialog(currentScore, this);
+        scoreAdded = true;  // 점수가 추가되었음을 표시
+    } else {
+        rankingDialog = new RankingDialog(this);  // 점수 추가 없이 랭킹만 표시
+    }
+    
+    if (rankingDialog) {
+        rankingDialog->exec();
+        
+        // 실행 후 정리
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
 }

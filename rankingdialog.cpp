@@ -4,16 +4,29 @@
 #include <QFont>
 #include <QScreen>
 #include <QApplication>
+#include <algorithm>
+
+// 전역 정적 변수로 랭킹 데이터 유지
+static QList<RankingRecord> globalRankings;
 
 RankingDialog::RankingDialog(QWidget *parent)
-    : QDialog(parent), titleLabel(nullptr), closeButton(nullptr)
+    : QDialog(parent), titleLabel(nullptr), closeButton(nullptr), rankingListWidget(nullptr)
 {
+    loadRankings();
+    setupUI();
+}
+
+RankingDialog::RankingDialog(int newScore, QWidget *parent)
+    : QDialog(parent), titleLabel(nullptr), closeButton(nullptr), rankingListWidget(nullptr)
+{
+    loadRankings();
+    addScore(newScore);
     setupUI();
 }
 
 RankingDialog::~RankingDialog()
 {
-    // Qt의 자동 메모리 관리로 인해 명시적 삭제는 필요하지 않음
+    saveRankings();
 }
 
 void RankingDialog::setupUI()
@@ -85,25 +98,8 @@ void RankingDialog::setupUI()
     mainLayout->addWidget(line);
     
     // 랭킹 리스트 영역
-    QWidget* rankingListWidget = new QWidget(this);
-    QVBoxLayout* rankingLayout = new QVBoxLayout(rankingListWidget);
-    rankingLayout->setSpacing(8);
-    
-    // "No records." 메시지를 중앙에 표시
-    QLabel* noRecordsLabel = new QLabel("No records.", rankingListWidget);
-    noRecordsLabel->setStyleSheet(R"(
-        QLabel {
-            font-size: 24px;
-            color: #7f8c8d;
-            font-style: italic;
-        }
-    )");
-    noRecordsLabel->setAlignment(Qt::AlignCenter);
-    
-    // 상하 여백을 위한 스트레치 추가
-    rankingLayout->addStretch();
-    rankingLayout->addWidget(noRecordsLabel);
-    rankingLayout->addStretch();
+    rankingListWidget = new QWidget(this);
+    updateRankingDisplay();
     
     mainLayout->addWidget(rankingListWidget);
     
@@ -123,4 +119,111 @@ void RankingDialog::setupUI()
 void RankingDialog::closeDialog()
 {
     accept();
+}
+
+void RankingDialog::loadRankings()
+{
+    // 전역 정적 변수에서 랭킹 데이터 로드
+    rankings = globalRankings;
+}
+
+void RankingDialog::saveRankings()
+{
+    // 전역 정적 변수에 랭킹 데이터 저장
+    globalRankings = rankings;
+}
+
+void RankingDialog::addScore(int score)
+{
+    // 새 점수 추가
+    RankingRecord newRecord(score);
+    rankings.append(newRecord);
+    
+    // 점수 순으로 정렬 (높은 점수부터)
+    std::sort(rankings.begin(), rankings.end(), [](const RankingRecord& a, const RankingRecord& b) {
+        return a.score > b.score;
+    });
+    
+    // 최대 7개까지만 유지
+    if (rankings.size() > 7) {
+        rankings = rankings.mid(0, 7);
+    }
+    
+    // 즉시 저장
+    saveRankings();
+}
+
+void RankingDialog::updateRankingDisplay()
+{
+    // 기존 레이아웃 정리
+    if (rankingListWidget->layout()) {
+        QLayoutItem* item;
+        while ((item = rankingListWidget->layout()->takeAt(0)) != nullptr) {
+            delete item->widget();
+            delete item;
+        }
+        delete rankingListWidget->layout();
+    }
+    
+    QVBoxLayout* rankingLayout = new QVBoxLayout(rankingListWidget);
+    rankingLayout->setSpacing(8);
+    
+    if (rankings.isEmpty()) {
+        // "No records." 메시지 표시
+        QLabel* noRecordsLabel = new QLabel("No records.", rankingListWidget);
+        noRecordsLabel->setStyleSheet(R"(
+            QLabel {
+                font-size: 24px;
+                color: #7f8c8d;
+                font-style: italic;
+            }
+        )");
+        noRecordsLabel->setAlignment(Qt::AlignCenter);
+        
+        rankingLayout->addStretch();
+        rankingLayout->addWidget(noRecordsLabel);
+        rankingLayout->addStretch();
+    } else {
+        // 랭킹 리스트 표시
+        for (int i = 0; i < rankings.size(); ++i) {
+            const RankingRecord& record = rankings[i];
+            
+            QWidget* rankItem = new QWidget(rankingListWidget);
+            rankItem->setFixedHeight(50);
+            rankItem->setStyleSheet(QString(R"(
+                QWidget {
+                    background-color: %1;
+                    border-radius: 10px;
+                    margin: 2px;
+                }
+            )").arg(i < 3 ? "#f0f9ff" : "#ffffff"));
+            
+            QHBoxLayout* itemLayout = new QHBoxLayout(rankItem);
+            itemLayout->setContentsMargins(15, 0, 15, 0);
+            
+            // 순위 번호
+            QLabel* rankNum = new QLabel(QString::number(i + 1), rankItem);
+            rankNum->setStyleSheet(QString(R"(
+                QLabel {
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: %1;
+                }
+            )").arg(i < 3 ? "#2980b9" : "#7f8c8d"));
+            rankNum->setFixedWidth(30);
+            
+            // 점수 (중앙에 배치)
+            QLabel* scoreLabel = new QLabel(QString("%1 pt").arg(record.score), rankItem);
+            scoreLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #e67e22;");
+            scoreLabel->setAlignment(Qt::AlignCenter);
+            
+            itemLayout->addWidget(rankNum);
+            itemLayout->addWidget(scoreLabel, 1);  // stretch factor 1로 중앙 확장
+            
+            rankingLayout->addWidget(rankItem);
+        }
+        
+        // 남은 공간을 위한 스트레치
+        rankingLayout->addStretch();
+    }
 }
