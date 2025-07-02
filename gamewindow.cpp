@@ -107,6 +107,32 @@ void GameWindow::setupGame()
     obstacles.clear();
     stars.clear();
     
+    // 별 모양 초기화 - 둥근 모서리와 부드러운 곡선
+    starPath = QPainterPath();
+    const qreal angleStep = M_PI / STAR_POINTS;
+    const qreal controlDist = CORNER_SMOOTHNESS; // 제어점 거리 비율
+    
+    for (int i = 0; i < STAR_POINTS * 2; ++i) {
+        qreal radius = (i % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+        qreal angle = i * angleStep;
+        qreal nextAngle = (i + 1) * angleStep;
+        
+        QPointF point(radius * sin(angle), -radius * cos(angle));
+        qreal nextRadius = ((i + 1) % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+        QPointF nextPoint(nextRadius * sin(nextAngle), -nextRadius * cos(nextAngle));
+        
+        if (i == 0) {
+            starPath.moveTo(point);
+        }
+        
+        // 현재 점과 다음 점 사이에 제어점을 추가하여 둥근 모서리 생성
+        QPointF ctrl1 = point + QPointF(radius * controlDist * cos(angle), radius * controlDist * sin(angle));
+        QPointF ctrl2 = nextPoint - QPointF(nextRadius * controlDist * cos(nextAngle), nextRadius * controlDist * sin(nextAngle));
+        
+        starPath.cubicTo(ctrl1, ctrl2, nextPoint);
+    }
+    starPath.closeSubpath();
+    
     // 마이크 프로세스 시작
     startMicProcess();
     
@@ -220,28 +246,45 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
     // 배경 그리기
     painter.fillRect(rect(), Qt::black);
-
-    // paintEvent에서는 별 생성하지 않음 - spawnObstacles에서 처리
-
+    
     // 별 그리기 (얼굴 포함)
-    painter.setPen(QPen(Qt::black, 2));
     for (Star& star : stars) {
         if (!star.active) continue;
         
-        // 단순한 별 그리기
-        painter.setBrush(Qt::yellow);
-        painter.setPen(Qt::yellow);
-        QRectF starRect(star.pos.x() - starSize/2, star.pos.y() - starSize/2, 
-                       starSize, starSize);
-        painter.drawEllipse(starRect);
+        painter.save();
+        painter.translate(star.pos);
+        
+        // 별 그리기
+        painter.setBrush(QColor(255, 223, 0));  // 밝은 노란색
+        painter.setPen(Qt::NoPen);
+        painter.drawPath(starPath);
+        
+        // 얼굴 그리기
+        painter.setPen(QPen(Qt::black, 2));  // 선 굵기 감소
+        
+        // 귀여운 점 형태의 눈
+        painter.setBrush(Qt::black);
+        painter.drawEllipse(QPointF(-starSize/8, -starSize/8), 2.5, 2.5);
+        painter.drawEllipse(QPointF(starSize/8, -starSize/8), 2.5, 2.5);
+        
+        // 간단한 U자형 미소
+        painter.setPen(QPen(Qt::black, 2));
+        QPainterPath smilePath;
+        const qreal smileWidth = starSize/5;
+        const qreal smileHeight = starSize/8;
+        smilePath.moveTo(-smileWidth, 0);  // Y 위치를 0으로 조정
+        smilePath.quadTo(0, smileHeight, smileWidth, 0);  // 제어점도 함께 조정
+        painter.drawPath(smilePath);
+        
+        painter.restore();
     }
     
-    // 플레이어 그리기
+    // 플레이어 그리기 (원형)
     painter.setBrush(Qt::white);
     painter.setPen(Qt::white);
     painter.drawEllipse(player);
     
-    // 장애물들 그리기
+    // 장애물 그리기
     painter.setBrush(Qt::red);
     painter.setPen(Qt::red);
     for (const QRect &obstacle : obstacles) {
@@ -294,24 +337,30 @@ void GameWindow::updateGame()
     }
     
     // 별 이동 및 충돌 검사
-    QRectF playerBounds(player.x() - 20, player.y() - 20, 40, 40);
+    const QRectF playerBounds(player.x() - 15, player.y() - 15, 30, 30);
+    const int halfStarSize = starSize / 2;  // 미리 계산
     
     for (Star &star : stars) {
         if (!star.active) continue;
         
-        star.pos.setX(star.pos.x() - 3);  // 장애물과 같은 속도로 이동
-        
-        // 별과 플레이어의 충돌 검사
-        QRectF starRect(star.pos.x() - starSize/2, star.pos.y() - starSize/2, starSize, starSize);
-        if (playerBounds.intersects(starRect)) {
+        // 화면 밖으로 나간 별은 즉시 비활성화
+        if (star.pos.x() + halfStarSize < 0) {
             star.active = false;
-            score += 3;  // 별 획득 시 3점 추가
             continue;
         }
         
-        // 화면 밖으로 나간 별 제거
-        if (star.pos.x() + starSize < 0) {
+        star.pos.setX(star.pos.x() - 3);  // 장애물과 같은 속도로 이동
+        
+        // 충돌 검사 최적화: 대략적인 거리 체크 먼저
+        const qreal dx = qAbs(star.pos.x() - player.x());
+        const qreal dy = qAbs(star.pos.y() - player.y());
+        if (dx > starSize || dy > starSize) continue;  // 충돌 불가능
+        
+        // 정확한 충돌 검사
+        QRectF starRect(star.pos.x() - halfStarSize, star.pos.y() - halfStarSize, starSize, starSize);
+        if (playerBounds.intersects(starRect)) {
             star.active = false;
+            score += 3;  // 별 획득 시 3점 추가
         }
     }
     
@@ -321,15 +370,12 @@ void GameWindow::updateGame()
         return;
     }
     
-    // 비활성 별 주기적으로 정리 (매 10프레임마다)
-    static int cleanupCounter = 0;
-    if (++cleanupCounter >= 10) {
-        cleanupCounter = 0;
-        if (stars.size() > 20) {
-            for (int i = stars.size() - 1; i >= 0; --i) {
-                if (!stars[i].active) {
-                    stars.removeAt(i);
-                }
+    // 비활성 별 정리 (stars 크기가 임계값을 초과할 때만)
+    const int MAX_STARS = 25;  // 최대 별 개수
+    if (stars.size() > MAX_STARS) {
+        for (int i = stars.size() - 1; i >= 0; --i) {
+            if (!stars[i].active) {
+                stars.removeAt(i);
             }
         }
     }
@@ -352,8 +398,8 @@ void GameWindow::spawnObstacles()
     QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
     obstacles.append(bottomObstacle);
 
-    // 50% 확률로 별 생성
-    if (QRandomGenerator::global()->bounded(2) == 0) {
+    // 30% 확률로 별 생성
+    if (QRandomGenerator::global()->bounded(100) < 30) {
         // 별을 장애물 사이 공간의 중앙에 배치
         int starX = width() + OBSTACLE_WIDTH/2;
         int starY = gapY;

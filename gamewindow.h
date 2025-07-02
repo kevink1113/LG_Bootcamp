@@ -55,12 +55,14 @@ private:
         Star(QPointF p) : pos(p), active(true) {}
     };
     QList<Star> stars;  // 별 위치와 상태 목록
-    int starSize = 20;     // 별의 크기를 기본값으로 복원
+    int starSize = 60;     // 별 크기
+    QPainterPath starPath; // 캐시된 별 모양
     
     // 상수 정의
-    static constexpr int STAR_POINTS = 5;  // 별의 꼭지점 수
-    static constexpr float STAR_INNER_RATIO = 0.4f;  // 별의 내부 반지름 비율
-    static constexpr float STAR_FACE_RATIO = 0.3f;   // 얼굴 크기 비율
+    static constexpr int STAR_POINTS = 5;    // 별의 꼭지점 수
+    static constexpr float OUTER_RADIUS = 1.0f;  // 외부 반지름 비율
+    static constexpr float INNER_RADIUS = 0.38f;  // 내부 반지름 비율 (더 뾰족하게)
+    static constexpr float CORNER_SMOOTHNESS = 0.0f; // 모서리 둥글기 제거
     
     int playerSpeed;
     int score;
@@ -74,9 +76,9 @@ private:
     int targetY;
     
     // 게임 요소 크기
-    static const int PLAYER_SIZE = 30;  // 플레이어 크기 약간 증가
-    static const int OBSTACLE_WIDTH = 40;  // 장애물 너비 약간 증가
-    static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격 증가
+    static const int PLAYER_SIZE = 30;  // 플레이어 크기
+    static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
+    static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
 };
 
 #endif // GAMEWINDOW_H
