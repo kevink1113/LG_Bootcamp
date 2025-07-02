@@ -17,10 +17,65 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow),
     gameWindow(nullptr),
     settingsDialog(nullptr),
-    volumeSlider(nullptr)
+    volumeSlider(nullptr),
+    rankingButton(nullptr)
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
+    
+    // Ranking 버튼 생성
+    rankingButton = new QPushButton(this);
+    rankingButton->setObjectName("rankingButton");
+    rankingButton->setFixedSize(40, 40);  // 설정 버튼과 동일한 크기
+    
+    // 버튼 스타일 설정
+    QString buttonStyle = 
+        "QPushButton {"
+        "   background-color: rgba(255, 255, 255, 180);"
+        "   border: none;"
+        "   border-radius: 10px;"
+        "   padding: 5px;"
+        "}"
+        "QPushButton:hover {"
+        "   background-color: rgba(255, 255, 255, 220);"
+        "}"
+        "QPushButton:pressed {"
+        "   background-color: rgba(200, 200, 200, 220);"
+        "}";
+    // 두 버튼 모두 동일한 기본 스타일 적용
+    rankingButton->setStyleSheet(buttonStyle);
+    ui->settingsButton->setStyleSheet(buttonStyle);
+
+    // SVG 트로피 아이콘 설정 (임베디드 시스템 최적화)
+    QIcon trophyIcon(":/resources/trophy.svg");
+    rankingButton->setIcon(trophyIcon);
+    rankingButton->setIconSize(QSize(28, 28));  // 아이콘 크기 설정
+    
+    // 버튼 스타일 설정 (임베디드 시스템 최적화)
+    QString iconStyle = buttonStyle +
+        "QPushButton {"
+        "   padding: 2px;"            // 최소한의 패딩
+        "   border-radius: 5px;"      // 둥근 모서리 (줄임)
+        "   color: #FFD700;"          // 금색으로 설정
+        "   background-color: rgba(0, 0, 0, 120);"  // 어두운 배경으로 대비 강화
+        "   font-weight: bold;"       // 굵게 표시
+        "}"
+        "QPushButton:hover {"
+        "   background-color: rgba(255, 223, 0, 180);"  // 호버 시 금색 배경
+        "}";
+    rankingButton->setStyleSheet(iconStyle);
+    
+    // 버튼 클릭 시그널 연결 (SIGNAL/SLOT 매크로 사용)
+    connect(rankingButton, SIGNAL(clicked()), this, SLOT(on_rankingButton_clicked()));
+    
+    // 랭킹 버튼 표시
+    rankingButton->show();
+    
+    // 버튼 순서 설정 (설정 버튼이 최상위)
+    updateButtonPositions();
+    ui->settingsButton->raise();  // 설정 버튼을 최상위로
+    rankingButton->raise();       // 랭킹 버튼을 그 다음으로
+    
     createSettingsDialog();
 }
 
@@ -235,4 +290,45 @@ void MainWindow::on_menuButton2_clicked()
 void MainWindow::on_menuButton3_clicked()
 {
     QMessageBox::information(this, "Menu 3", "Menu 3 was selected!");
+}
+
+void MainWindow::on_rankingButton_clicked()
+{
+    // TODO: 랭킹 시스템 구현
+    QMessageBox::information(this, "Ranking", "Ranking system will be implemented soon!");
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    updateButtonPositions();
+}
+
+void MainWindow::updateButtonPositions()
+{
+    if (!rankingButton || !ui->settingsButton) return;
+
+    // 버튼 크기와 여백 설정
+    const int margin = 20;
+    const int buttonSize = 40;  // 설정 버튼과 동일한 크기
+    const int spacing = 10;     // 버튼 사이 간격
+
+    // 설정 버튼의 위치를 우측 상단으로 설정
+    ui->settingsButton->setGeometry(
+        width() - buttonSize - margin,  // x
+        margin,                         // y
+        buttonSize,                     // width
+        buttonSize                      // height
+    );
+    
+    // 랭킹 버튼을 설정 버튼 왼쪽에 배치 (간격 추가)
+    rankingButton->setGeometry(
+        width() - (2 * buttonSize) - margin - spacing,  // x
+        margin,                                         // y
+        buttonSize,                                     // width
+        buttonSize                                      // height
+    );
+    
+    // 버튼들을 부모 위젯의 스택 순서 최상위로 이동
+    rankingButton->stackUnder(ui->settingsButton);  // 설정 버튼 바로 아래에 위치
 }
