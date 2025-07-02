@@ -6,6 +6,7 @@
 #include <QSlider>
 #include <QPushButton>
 #include "gamewindow.h"
+#include "rankingdialog.h"
 
 namespace Ui {
 class MainWindow;
@@ -36,6 +37,7 @@ private:
     QDialog *settingsDialog;
     QSlider *volumeSlider;
     QPushButton *rankingButton;
+    RankingDialog *rankingDialog;
     void createSettingsDialog();
     void updateButtonPositions();
 };

@@ -18,7 +18,8 @@ MainWindow::MainWindow(QWidget *parent) :
     gameWindow(nullptr),
     settingsDialog(nullptr),
     volumeSlider(nullptr),
-    rankingButton(nullptr)
+    rankingButton(nullptr),
+    rankingDialog(nullptr)
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
@@ -28,7 +29,6 @@ MainWindow::MainWindow(QWidget *parent) :
     
     // Ranking 버튼 생성
     rankingButton = new QPushButton(this);
-    rankingButton->setObjectName("rankingButton");
     rankingButton->setFixedSize(50, 50);  // 설정 버튼과 동일한 크기로 증가
     
     // 기본 버튼 스타일 설정
@@ -52,7 +52,7 @@ MainWindow::MainWindow(QWidget *parent) :
         "   padding: 3px; "  // 패딩 조정하여 텍스트 위치 최적화
         "   font-weight: bold; "
         "   color: #FFB700; "  // 진한 황금색
-        "   text-shadow: 1px 1px 2px #804000; "  // 그림자 효과
+        "   border: 1px solid rgba(128, 64, 0, 0.3); "  // 테두리로 그림자 효과 대체
         "}";
     
     // 스타일 적용
@@ -64,8 +64,8 @@ MainWindow::MainWindow(QWidget *parent) :
     rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
     
     // 버튼 클릭 시그널 연결
-    connect(rankingButton, SIGNAL(clicked()), this, SLOT(on_rankingButton_clicked()));
-    
+    connect(rankingButton, &QPushButton::clicked, this, &MainWindow::on_rankingButton_clicked);
+
     // 버튼 표시 및 정렬
     rankingButton->show();
     updateButtonPositions();
@@ -82,6 +82,19 @@ MainWindow::~MainWindow()
         gameWindow->deleteLater();
         gameWindow = nullptr;
     }
+    
+    if (rankingDialog) {
+        rankingDialog->close();
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+    
+    if (settingsDialog) {
+        settingsDialog->close();
+        settingsDialog->deleteLater();
+        settingsDialog = nullptr;
+    }
+    
     delete ui;
 }
 
@@ -290,8 +303,27 @@ void MainWindow::on_menuButton3_clicked()
 
 void MainWindow::on_rankingButton_clicked()
 {
-    // TODO: 랭킹 시스템 구현
-    QMessageBox::information(this, "Ranking", "Ranking system will be implemented soon!");
+    // 기존 다이얼로그가 있으면 삭제
+    if (rankingDialog) {
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+    
+    // 새 다이얼로그 생성
+    rankingDialog = new RankingDialog(this);
+    if (!rankingDialog) {
+        qDebug() << "Failed to create ranking dialog!";
+        return;
+    }
+    
+    // 다이얼로그 표시
+    rankingDialog->exec();
+    
+    // 실행 후 정리
+    if (rankingDialog) {
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
