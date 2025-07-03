@@ -9,8 +9,13 @@
 #include <QFile>
 #include <QTextStream>
 #include <cmath>
+#include <QDateTime>
+#include <QUdpSocket>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QHostAddress>
 
-GameWindow::GameWindow(QWidget *parent)
+GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     : QMainWindow(parent)
     , gameTimer(nullptr)
     , obstacleTimer(nullptr)
@@ -18,6 +23,11 @@ GameWindow::GameWindow(QWidget *parent)
     , micProcess(nullptr)
     , pitchFile(nullptr)
     , backButton(nullptr)
+    , udpSocket(nullptr)
+    , broadcastTimer(nullptr)
+    , cleanupTimer(nullptr)
+    , playerId(QString::number(QDateTime::currentMSecsSinceEpoch()))
+    , isMultiplayerMode(isMultiplayer)
     , playerSpeed(5)
     , score(0)
     , gameRunning(false)
@@ -25,9 +35,9 @@ GameWindow::GameWindow(QWidget *parent)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
-    , targetY(0)  // setupGame에서 올바른 값으로 설정됨
+    , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
 {
-    qDebug() << "GameWindow constructor called";
+    qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
     
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
@@ -41,7 +51,7 @@ GameWindow::~GameWindow()
     qDebug() << "GameWindow destructor called";
     gameRunning = false;
     
-    // 마이크 프로세스 먼저 정지
+    stopMultiplayer();
     stopMicProcess();
     
     // 타이머들 정리
@@ -152,8 +162,15 @@ void GameWindow::setupGame()
     // 마이크 프로세스 시작
     startMicProcess();
     
-    // 뒤로가기 버튼 설정
-    setupBackButton();
+    // 멀티플레이어 모드인 경우 네트워크 초기화
+    if (isMultiplayerMode) {
+        startMultiplayer();
+    }
+    
+    // 뒤로가기 버튼 설정 (멀티플레이어 모드에서만)
+    if (isMultiplayerMode) {
+        setupBackButton();
+    }
     
     // 초기 화면 그리기
     update();
@@ -588,4 +605,164 @@ void GameWindow::goBackToMainWindow()
     
     // 게임 창 닫기
     close();
+}
+
+// 멀티플레이어 관련 함수들
+void GameWindow::startMultiplayer()
+{
+    qDebug() << "Starting multiplayer mode...";
+    
+    // UDP 소켓 생성
+    udpSocket = new QUdpSocket(this);
+    if (!udpSocket->bind(BROADCAST_PORT, QUdpSocket::ShareAddress)) {
+        qDebug() << "Failed to bind UDP socket to port" << BROADCAST_PORT;
+        return;
+    }
+    
+    // 브로드캐스트 주소로 바인딩
+    udpSocket->joinMulticastGroup(QHostAddress("192.168.10.255"));
+    
+    // 데이터그램 읽기 시그널 연결
+    connect(udpSocket, &QUdpSocket::readyRead, this, &GameWindow::readPendingDatagrams);
+    
+    // 브로드캐스트 타이머 설정
+    broadcastTimer = new QTimer(this);
+    connect(broadcastTimer, &QTimer::timeout, this, &GameWindow::broadcastPlayerData);
+    broadcastTimer->start(BROADCAST_INTERVAL);
+    
+    // 클린업 타이머 설정
+    cleanupTimer = new QTimer(this);
+    connect(cleanupTimer, &QTimer::timeout, this, &GameWindow::cleanupInactivePlayers);
+    cleanupTimer->start(CLEANUP_INTERVAL);
+    
+    qDebug() << "Multiplayer mode started successfully";
+}
+
+void GameWindow::stopMultiplayer()
+{
+    qDebug() << "Stopping multiplayer mode...";
+    
+    if (broadcastTimer) {
+        broadcastTimer->stop();
+        broadcastTimer->deleteLater();
+        broadcastTimer = nullptr;
+    }
+    
+    if (cleanupTimer) {
+        cleanupTimer->stop();
+        cleanupTimer->deleteLater();
+        cleanupTimer = nullptr;
+    }
+    
+    if (udpSocket) {
+        udpSocket->close();
+        udpSocket->deleteLater();
+        udpSocket = nullptr;
+    }
+    
+    otherPlayers.clear();
+    qDebug() << "Multiplayer mode stopped";
+}
+
+void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
+{
+    if (!isMultiplayerMode || !udpSocket) return;
+    
+    QJsonObject data;
+    data["type"] = "player_update";
+    data["playerId"] = playerId;
+    data["x"] = x;
+    data["y"] = y;
+    data["score"] = score;
+    data["gameOver"] = gameOver;
+    data["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+    
+    QJsonDocument doc(data);
+    QByteArray datagram = doc.toJson();
+    
+    // 192.168.10.3~8 범위로 브로드캐스트
+    for (int i = 3; i <= 8; ++i) {
+        QHostAddress address(QString("192.168.10.%1").arg(i));
+        udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
+    }
+}
+
+void GameWindow::readPendingDatagrams()
+{
+    if (!udpSocket) return;
+    
+    while (udpSocket->hasPendingDatagrams()) {
+        QByteArray datagram;
+        datagram.resize(udpSocket->pendingDatagramSize());
+        QHostAddress sender;
+        quint16 senderPort;
+        
+        udpSocket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        processIncomingData(datagram, sender, senderPort);
+    }
+}
+
+void GameWindow::processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port)
+{
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+    
+    if (error.error != QJsonParseError::NoError) {
+        qDebug() << "JSON parse error:" << error.errorString();
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    QString type = obj["type"].toString();
+    
+    if (type == "player_update") {
+        QString playerId = obj["playerId"].toString();
+        
+        // 자신의 데이터는 무시
+        if (playerId == this->playerId) return;
+        
+        PlayerData playerData;
+        playerData.playerId = playerId;
+        playerData.x = obj["x"].toInt();
+        playerData.y = obj["y"].toInt();
+        playerData.score = obj["score"].toInt();
+        playerData.gameOver = obj["gameOver"].toBool();
+        playerData.address = sender;
+        playerData.port = port;
+        playerData.lastSeen = QDateTime::currentMSecsSinceEpoch();
+        
+        // 기존 플레이어 업데이트 또는 새 플레이어 추가
+        bool found = false;
+        for (int i = 0; i < otherPlayers.size(); ++i) {
+            if (otherPlayers[i].playerId == playerId) {
+                otherPlayers[i] = playerData;
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            otherPlayers.append(playerData);
+            qDebug() << "New player joined:" << playerId;
+        }
+    }
+}
+
+void GameWindow::broadcastPlayerData()
+{
+    if (!isMultiplayerMode || !gameRunning) return;
+    
+    updatePlayerPosition(player.x(), player.y(), score, false);
+}
+
+void GameWindow::cleanupInactivePlayers()
+{
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    
+    for (int i = otherPlayers.size() - 1; i >= 0; --i) {
+        if (currentTime - otherPlayers[i].lastSeen > PLAYER_TIMEOUT) {
+            qDebug() << "Player timed out:" << otherPlayers[i].playerId;
+            otherPlayers.removeAt(i);
+        }
+    }
 }

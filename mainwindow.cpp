@@ -445,7 +445,15 @@ void MainWindow::createNewGameWindow()
 
 void MainWindow::on_menuButton2_clicked()
 {
-    QMessageBox::information(this, "Menu 2", "Menu 2 was selected!");
+    if (gameWindow) {
+        gameWindow->close();
+        gameWindow->deleteLater();
+        gameWindow = nullptr;
+    }
+
+    gameWindow = new GameWindow(nullptr, true); // 멀티플레이어 모드
+    gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
+    gameWindow->show();
 }
 
 void MainWindow::on_menuButton3_clicked()

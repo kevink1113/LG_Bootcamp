@@ -18,12 +18,30 @@
 #include "gameoverdialog.h"
 #include <QPushButton>
 
+// 멀티플레이어 관련 헤더들
+#include <QUdpSocket>
+#include <QHostAddress>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
+
+struct PlayerData {
+    QString playerId;
+    int x;
+    int y;
+    int score;
+    bool gameOver;
+    QHostAddress address;
+    quint16 port;
+    qint64 lastSeen;
+};
+
 class GameWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit GameWindow(QWidget *parent = nullptr);
+    explicit GameWindow(QWidget *parent = nullptr, bool isMultiplayer = false);
     ~GameWindow();
 
 signals:
@@ -39,6 +57,11 @@ private slots:
     void spawnObstacles();
     void readPitchData();
     void goBackToMainWindow();
+    
+    // 멀티플레이어 관련 슬롯들
+    void readPendingDatagrams();
+    void broadcastPlayerData();
+    void cleanupInactivePlayers();
 
 private:
     void setupGame();
@@ -47,6 +70,13 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void setupBackButton();
+    
+    // 멀티플레이어 관련 함수들
+    void startMultiplayer();
+    void stopMultiplayer();
+    void updatePlayerPosition(int x, int y, int score, bool gameOver);
+    void sendPlayerData();
+    void processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port);
 
     QTimer *gameTimer;
     QTimer *obstacleTimer;
@@ -54,6 +84,14 @@ private:
     QProcess *micProcess;
     QFile *pitchFile;
     QPushButton *backButton;
+    
+    // 멀티플레이어 관련 멤버들
+    QUdpSocket *udpSocket;
+    QTimer *broadcastTimer;
+    QTimer *cleanupTimer;
+    QString playerId;
+    QList<PlayerData> otherPlayers;
+    bool isMultiplayerMode;
     
     QRect player;
     QList<QRect> obstacles;
@@ -87,6 +125,14 @@ private:
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
     static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
+    static const int WINDOW_WIDTH = 800;  // 윈도우 너비
+    static const int WINDOW_HEIGHT = 600;  // 윈도우 높이
+    
+    // 멀티플레이어 상수들
+    static const quint16 BROADCAST_PORT = 12345;
+    static const int BROADCAST_INTERVAL = 100; // 100ms
+    static const int CLEANUP_INTERVAL = 2000; // 2초
+    static const int PLAYER_TIMEOUT = 3000; // 3초
 };
 
 #endif // GAMEWINDOW_H
