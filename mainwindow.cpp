@@ -337,12 +337,16 @@ void MainWindow::createNewGameWindow()
     
     qDebug() << "Creating new game window...";
     
+    // 메인 윈도우를 먼저 숨겨서 매끄러운 전환 효과
+    hide();
+    
     try {
         // 게임 윈도우를 독립적인 윈도우로 생성
         gameWindow = new GameWindow(nullptr);
         
         if (!gameWindow) {
             qDebug() << "Failed to create game window!";
+            showFullScreen(); // 실패 시 메인 윈도우 다시 표시
             isCreatingGameWindow = false;
             return;
         }
@@ -354,10 +358,14 @@ void MainWindow::createNewGameWindow()
             isCreatingGameWindow = false;
         });
         
-        // 게임 윈도우 표시
-        gameWindow->show();
-        gameWindow->raise();
-        gameWindow->activateWindow();
+        // 게임 윈도우에서 메인 윈도우로 돌아가라는 시그널 연결
+        connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+            qDebug() << "Request main window signal received";
+            // 즉시 메인 윈도우 표시
+            showFullScreen();
+            raise();
+            activateWindow();
+        });
         
         qDebug() << "Game window created and shown successfully";
         
@@ -367,12 +375,14 @@ void MainWindow::createNewGameWindow()
             gameWindow->deleteLater();
             gameWindow = nullptr;
         }
+        show(); // 실패 시 메인 윈도우 다시 표시
     } catch (...) {
         qDebug() << "Unknown exception while creating game window";
         if (gameWindow) {
             gameWindow->deleteLater();
             gameWindow = nullptr;
         }
+        showFullScreen(); // 실패 시 메인 윈도우 다시 표시
     }
     
     isCreatingGameWindow = false;

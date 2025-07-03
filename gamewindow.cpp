@@ -29,6 +29,9 @@ GameWindow::GameWindow(QWidget *parent)
 {
     qDebug() << "GameWindow constructor called";
     
+    // 초기화 과정에서 창이 보이지 않도록 숨김
+    hide();
+    
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
     QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
@@ -75,22 +78,21 @@ void GameWindow::setupGame()
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
     
-    // 게임 윈도우 설정
+    // 게임 윈도우 설정 - 표시되기 전에 모든 설정 완료
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     
     // 창 크기와 위치를 화면에 맞게 설정
     setGeometry(screenGeometry);
     
+    // 전체화면 상태로 미리 설정
+    setWindowState(Qt::WindowFullScreen);
+    
     // 기본 설정 사용
     
-    // 윈도우를 보이게 하고 전체화면으로 설정
+    // 모든 설정이 완료된 후 윈도우 표시
     show();
-    setWindowState(Qt::WindowFullScreen);
     raise();
     activateWindow();
-    
-    // 창 크기를 화면 크기로 설정
-    setGeometry(screenGeometry);
     
     // 플레이어 초기화 (화면 크기에 맞게 조정)
     player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
@@ -466,12 +468,9 @@ void GameWindow::gameOver()
     GameOverDialog *dialog = new GameOverDialog(score, this);
     
     connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
-        QWidget* mainWindow = parentWidget();
-        if (mainWindow) {
-            mainWindow->showNormal();
-            mainWindow->activateWindow();
-            mainWindow->raise();
-        }
+        // 메인 윈도우로 돌아가라는 시그널 발생
+        emit requestMainWindow();
+        // 게임 윈도우 닫기
         close();
     });
     
@@ -584,12 +583,9 @@ void GameWindow::goBackToMainWindow()
         pitchTimer->stop();
     }
     
-    // MainWindow로 돌아가기
-    QWidget* mainWindow = parentWidget();
-    if (mainWindow) {
-        mainWindow->showNormal();  // 창 모드로 표시
-        mainWindow->activateWindow();  // 창을 활성화
-        mainWindow->raise();  // 창을 맨 앞으로
-    }
-    close();  // 게임 창 닫기
+    // 메인 윈도우로 돌아가라는 시그널 발생
+    emit requestMainWindow();
+    
+    // 게임 창 닫기
+    close();
 }
