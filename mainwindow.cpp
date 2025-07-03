@@ -25,6 +25,7 @@ MainWindow::MainWindow(QWidget *parent) :
     playerButton(nullptr),  // 플레이어 버튼 초기화
     rankingDialog(nullptr),
     playerDialog(nullptr),
+    currentPlayerLabel(nullptr),  // 현재 플레이어 라벨 초기화
     isCreatingGameWindow(false),
     gameWindowCreationTimer(nullptr)
 {
@@ -90,6 +91,24 @@ MainWindow::MainWindow(QWidget *parent) :
     playerButton->setIcon(personIcon);
     playerButton->setIconSize(QSize(30, 30));
     
+    // 현재 플레이어 표시 라벨 생성
+    currentPlayerLabel = new QLabel(this);
+    currentPlayerLabel->setAlignment(Qt::AlignCenter);
+    currentPlayerLabel->setStyleSheet(R"(
+        QLabel {
+            background-color: rgba(255, 255, 255, 200);
+            border: 2px solid #2196F3;
+            border-radius: 12px;
+            padding: 8px 16px;
+            font-size: 14pt;
+            font-weight: bold;
+            color: #2c3e50;
+            min-width: 200px;
+        }
+    )");
+    currentPlayerLabel->setText("No Player Selected");
+    currentPlayerLabel->show();
+    
     // 버튼 클릭 시그널 연결
     connect(rankingButton, &QPushButton::clicked, this, &MainWindow::showRankingDialog);
     connect(playerButton, &QPushButton::clicked, this, &MainWindow::showPlayerDialog);
@@ -108,6 +127,9 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(gameWindowCreationTimer, &QTimer::timeout, this, &MainWindow::createNewGameWindow);
     
     createSettingsDialog();
+    
+    // 초기 플레이어 표시 업데이트 (지연 실행으로 모든 UI가 준비된 후 실행)
+    QTimer::singleShot(100, this, &MainWindow::updateCurrentPlayerDisplay);
 }
 
 MainWindow::~MainWindow()
@@ -464,7 +486,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 
 void MainWindow::updateButtonPositions()
 {
-    if (!rankingButton || !ui->settingsButton || !playerButton) return;
+    if (!rankingButton || !ui->settingsButton || !playerButton || !currentPlayerLabel) return;
 
     // 버튼 크기와 여백 설정
     const int margin = 0;       // 여백 제거하여 최상단에 배치
@@ -495,9 +517,21 @@ void MainWindow::updateButtonPositions()
         buttonSize                                      // height
     );
     
+    // 현재 플레이어 라벨을 상단 중앙에 배치
+    currentPlayerLabel->adjustSize();  // 내용에 맞춰 크기 조정
+    QSize labelSize = currentPlayerLabel->size();
+    currentPlayerLabel->setGeometry(
+        (width() - labelSize.width()) / 2,  // x (중앙)
+        margin + 40,                        // y (상단에서 약간 아래)
+        labelSize.width(),                  // width
+        labelSize.height()                  // height
+    );
+    
     // 버튼들을 부모 위젯의 스택 순서 최상위로 이동
-    playerButton->stackUnder(ui->settingsButton);   // 설정 버튼 바로 아래에 위치
-    rankingButton->stackUnder(playerButton);        // 플레이어 버튼 바로 아래에 위치
+    currentPlayerLabel->raise();             // 플레이어 라벨을 최상위로
+    ui->settingsButton->raise();             // 설정 버튼을 그 다음으로
+    rankingButton->raise();                  // 랭킹 버튼을 그 다음으로
+    playerButton->raise();                   // 플레이어 버튼을 그 다음으로
 }
 
 void MainWindow::showPlayerDialog()
@@ -505,10 +539,60 @@ void MainWindow::showPlayerDialog()
     // PlayerDialog 인스턴스 생성 (한 번만 생성하여 재사용)
     if (!playerDialog) {
         playerDialog = new PlayerDialog(this);
+        
+        // 플레이어 변경 신호 연결
+        connect(playerDialog, &PlayerDialog::currentPlayerChanged, 
+                this, &MainWindow::updateCurrentPlayerDisplay);
     }
     
     // 다이얼로그 실행
-    playerDialog->exec();
+    int result = playerDialog->exec();
+    
+    // 다이얼로그가 닫힌 후 플레이어 표시 업데이트
+    if (result == QDialog::Accepted) {
+        updateCurrentPlayerDisplay();
+    }
+}
+
+void MainWindow::updateCurrentPlayerDisplay()
+{
+    if (!currentPlayerLabel || !playerDialog) return;
+    
+    QString currentPlayer = playerDialog->getCurrentPlayer();
+    
+    if (currentPlayer.isEmpty()) {
+        currentPlayerLabel->setText("No Player Selected");
+        currentPlayerLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: rgba(255, 255, 255, 200);
+                border: 2px solid #95a5a6;
+                border-radius: 12px;
+                padding: 8px 16px;
+                font-size: 14pt;
+                font-weight: bold;
+                color: #7f8c8d;
+                min-width: 200px;
+            }
+        )");
+    } else {
+        currentPlayerLabel->setText("Player : " + currentPlayer);
+        currentPlayerLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: rgba(46, 204, 113, 200);
+                border: 2px solid #27ae60;
+                border-radius: 12px;
+                padding: 8px 16px;
+                font-size: 14pt;
+                font-weight: bold;
+                color: white;
+                min-width: 200px;
+                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+            }
+        )");
+    }
+    
+    // 라벨 크기가 변경되었을 수 있으므로 위치 재조정
+    updateButtonPositions();
 }
 
 

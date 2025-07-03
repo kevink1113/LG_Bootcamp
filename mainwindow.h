@@ -44,6 +44,7 @@ private:
     QPushButton *playerButton;  // 플레이어 설정 버튼 추가
     RankingDialog *rankingDialog;
     PlayerDialog *playerDialog;
+    QLabel *currentPlayerLabel;  // 현재 플레이어 이름 표시 라벨
     
     // 게임 윈도우 생성 상태 관리
     bool isCreatingGameWindow;
@@ -51,6 +52,7 @@ private:
     
     void createSettingsDialog();
     void updateButtonPositions();
+    void updateCurrentPlayerDisplay();  // 현재 플레이어 표시 업데이트
     void createNewGameWindow();  // 새 함수 추가
     void cleanupGameWindow();    // 게임 윈도우 정리 함수
 };

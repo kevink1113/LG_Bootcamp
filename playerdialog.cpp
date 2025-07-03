@@ -2,9 +2,22 @@
 #include <QDebug>
 
 PlayerDialog::PlayerDialog(QWidget *parent)
-    : QDialog(parent), virtualKeyboard(nullptr)
+    : QDialog(parent), virtualKeyboard(nullptr), keyboardTimer(nullptr), isKeyboardShowing(false)
 {
-    setFixedSize(500, 700);
+    // 키보드 타이머 초기화
+    keyboardTimer = new QTimer(this);
+    keyboardTimer->setSingleShot(true);
+    keyboardTimer->setInterval(50); // 50ms 지연으로 중복 클릭 방지
+    
+    // 화면 크기에 맞춰 다이얼로그 크기 조정
+    QScreen *screen = QApplication::primaryScreen();
+    QRect screenGeometry = screen->geometry();
+    
+    // 화면 크기의 80% 사용하되, 최소/최대 크기 제한
+    int dialogWidth = qMin(qMax(500, int(screenGeometry.width() * 0.4)), 600);
+    int dialogHeight = qMin(qMax(600, int(screenGeometry.height() * 0.8)), int(screenGeometry.height() * 0.9));
+    
+    setFixedSize(dialogWidth, dialogHeight);
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setModal(true);
     
@@ -17,18 +30,21 @@ PlayerDialog::PlayerDialog(QWidget *parent)
         }
     )");
     
-    initializeSamplePlayers();
     setupUI();
     
     // 다이얼로그를 화면 중앙에 위치
-    QScreen *screen = QApplication::primaryScreen();
-    QRect screenGeometry = screen->geometry();
     QPoint center = screenGeometry.center();
     move(center.x() - width()/2, center.y() - height()/2);
 }
 
 PlayerDialog::~PlayerDialog()
 {
+    if (keyboardTimer) {
+        keyboardTimer->stop();
+        keyboardTimer->deleteLater();
+        keyboardTimer = nullptr;
+    }
+    
     if (virtualKeyboard) {
         virtualKeyboard->deleteLater();
         virtualKeyboard = nullptr;
@@ -37,14 +53,14 @@ PlayerDialog::~PlayerDialog()
 
 void PlayerDialog::setupUI()
 {
-    // 메인 레이아웃
+    // 메인 레이아웃 (다이얼로그 전체)
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(15);
+    mainLayout->setSpacing(0);
     mainLayout->setContentsMargins(15, 15, 15, 15);
 
-    // 상단 헤더 레이아웃
+    // 상단 헤더 레이아웃 (고정)
     QHBoxLayout *headerLayout = new QHBoxLayout();
-    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setContentsMargins(0, 0, 0, 15);
     
     // 제목 레이블
     titleLabel = new QLabel("PLAYER SETTINGS", this);
@@ -84,15 +100,53 @@ void PlayerDialog::setupUI()
     
     mainLayout->addLayout(headerLayout);
     
+    // 스크롤 영역 생성 (메인 컨텐츠용)
+    QScrollArea *mainScrollArea = new QScrollArea(this);
+    mainScrollArea->setWidgetResizable(true);
+    mainScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    mainScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    mainScrollArea->setStyleSheet(R"(
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+        QScrollBar:vertical {
+            border: none;
+            background: #ecf0f1;
+            width: 12px;
+            border-radius: 6px;
+        }
+        QScrollBar::handle:vertical {
+            background: #bdc3c7;
+            border-radius: 6px;
+            min-height: 20px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background: #95a5a6;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0px;
+        }
+    )");
+    
+    // 스크롤 가능한 컨텐츠 위젯
+    QWidget *scrollContentWidget = new QWidget();
+    scrollContentWidget->setStyleSheet("QWidget { background-color: transparent; }");
+    
+    // 스크롤 컨텐츠 레이아웃
+    QVBoxLayout *contentLayout = new QVBoxLayout(scrollContentWidget);
+    contentLayout->setSpacing(15);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+
     // 구분선
-    QFrame *line = new QFrame(this);
+    QFrame *line = new QFrame(scrollContentWidget);
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Sunken);
     line->setStyleSheet("QFrame { color: #bdc3c7; margin: 5px 0; }");
-    mainLayout->addWidget(line);
+    contentLayout->addWidget(line);
 
     // 플레이어 정보 입력 영역
-    QWidget *inputWidget = new QWidget(this);
+    QWidget *inputWidget = new QWidget(scrollContentWidget);
     inputWidget->setStyleSheet("QWidget { background-color: transparent; }");
     QVBoxLayout *inputLayout = new QVBoxLayout(inputWidget);
     inputLayout->setSpacing(12);
@@ -208,7 +262,7 @@ void PlayerDialog::setupUI()
 
     // 플레이어 목록을 담을 스크롤 영역
     playersScrollArea = new QScrollArea(inputWidget);
-    playersScrollArea->setFixedHeight(200);
+    playersScrollArea->setFixedHeight(180); // 높이를 조금 줄임
     playersScrollArea->setWidgetResizable(true);
     playersScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     playersScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -247,14 +301,14 @@ void PlayerDialog::setupUI()
     inputLayout->addWidget(playersScrollArea);
 
     inputLayout->addStretch();
-    mainLayout->addWidget(inputWidget);
+    contentLayout->addWidget(inputWidget);
 
     // 하단 버튼 영역
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     buttonLayout->setSpacing(12);
-    buttonLayout->setContentsMargins(15, 0, 15, 15);
+    buttonLayout->setContentsMargins(15, 10, 15, 10); // 여백 조정
 
-    saveButton = new QPushButton("💾 Close & Save", this);
+    saveButton = new QPushButton("💾 Close & Save", scrollContentWidget);
     saveButton->setFixedHeight(40);
     saveButton->setStyleSheet(R"(
         QPushButton {
@@ -274,7 +328,7 @@ void PlayerDialog::setupUI()
         }
     )");
 
-    cancelButton = new QPushButton("❌ Cancel", this);
+    cancelButton = new QPushButton("❌ Cancel", scrollContentWidget);
     cancelButton->setFixedHeight(40);
     cancelButton->setStyleSheet(R"(
         QPushButton {
@@ -296,7 +350,11 @@ void PlayerDialog::setupUI()
 
     buttonLayout->addWidget(saveButton);
     buttonLayout->addWidget(cancelButton);
-    mainLayout->addLayout(buttonLayout);
+    contentLayout->addLayout(buttonLayout);
+
+    // 스크롤 영역에 컨텐츠 설정
+    mainScrollArea->setWidget(scrollContentWidget);
+    mainLayout->addWidget(mainScrollArea);
 
     // 시그널 연결
     connect(closeButton, &QPushButton::clicked, this, &PlayerDialog::closeDialog);
@@ -310,24 +368,15 @@ void PlayerDialog::setupUI()
     updatePlayerList();
 }
 
-void PlayerDialog::initializeSamplePlayers()
-{
-    // 빈 플레이어 목록으로 시작 (샘플 플레이어들 제거)
-    playerList.clear();
-    currentPlayer.clear(); // 현재 플레이어도 없음
-}
+
 
 void PlayerDialog::updatePlayerList()
 {
     // 플레이어 수 업데이트
     playersLabel->setText(QString("Registered Players (%1/10):").arg(playerList.size()));
     
-    // 기존 위젯들 정리
-    QLayoutItem *child;
-    while ((child = playersListLayout->takeAt(0)) != nullptr) {
-        delete child->widget();
-        delete child;
-    }
+    // 기존 위젯들 정리 (성능 최적화)
+    clearPlayerListWidgets();
 
     // 플레이어가 없을 때 안내 메시지 표시
     if (playerList.isEmpty()) {
@@ -462,6 +511,9 @@ void PlayerDialog::selectPlayer(const QString &playerName)
         currentPlayer = playerName;
         updatePlayerList();
         
+        // 현재 플레이어 변경 신호 발생
+        emit currentPlayerChanged(currentPlayer);
+        
         QMessageBox::information(this, "✅ Player Selected", 
             QString("Player '%1' has been selected as the current player!")
             .arg(playerName));
@@ -478,6 +530,9 @@ void PlayerDialog::setCurrentPlayer(const QString &playerName)
     if (playerList.contains(playerName)) {
         currentPlayer = playerName;
         updatePlayerList();
+        
+        // 현재 플레이어 변경 신호 발생
+        emit currentPlayerChanged(currentPlayer);
     }
 }
 
@@ -503,9 +558,15 @@ bool PlayerDialog::addPlayer(const QString &playerName)
     }
     
     playerList.append(trimmedName);
-    currentPlayer = trimmedName; // 새로 추가된 플레이어를 현재 플레이어로 설정
-    updatePlayerList();
     
+    // 현재 플레이어가 없거나 새로 추가된 플레이어를 현재 플레이어로 설정
+    if (currentPlayer.isEmpty()) {
+        currentPlayer = trimmedName;
+        // 현재 플레이어 변경 신호 발생
+        emit currentPlayerChanged(currentPlayer);
+    }
+    
+    updatePlayerList();
     return true;
 }
 
@@ -560,6 +621,22 @@ void PlayerDialog::setPlayer()
 
 void PlayerDialog::showVirtualKeyboard()
 {
+    // 이미 키보드를 표시 중이면 무시
+    if (isKeyboardShowing) {
+        return;
+    }
+    
+    // 키보드가 이미 있으면 바로 표시
+    if (virtualKeyboard) {
+        virtualKeyboard->show();
+        virtualKeyboard->raise();
+        virtualKeyboard->setFocus();
+        isKeyboardShowing = true;
+        return;
+    }
+    
+    // 새로운 키보드 생성 (즉시 실행)
+    isKeyboardShowing = true;
     createVirtualKeyboard();
 }
 
@@ -612,6 +689,10 @@ void PlayerDialog::createVirtualKeyboard()
             background-color: #2196F3;
             color: white;
         }
+        QPushButton:disabled {
+            background-color: #ecf0f1;
+            color: #bdc3c7;
+        }
     )";
 
     // 특수 버튼 스타일들
@@ -630,12 +711,33 @@ void PlayerDialog::createVirtualKeyboard()
         QPushButton:pressed { background-color: #616161; }
     )";
 
-    // 키 생성을 위한 헬퍼 함수
+    // 키 생성을 위한 헬퍼 함수 (중복 클릭 방지 포함)
     auto createKey = [&](const QString &text, const QString &style, int width = 35, int height = 32) -> QPushButton* {
         QPushButton *btn = new QPushButton(text, virtualKeyboard);
         btn->setStyleSheet(style);
         btn->setFixedSize(width, height);
+        btn->setAutoRepeat(false); // 자동 반복 비활성화
+        btn->setAutoExclusive(false); // 배타적 선택 비활성화
         return btn;
+    };
+
+    // 안전한 키 입력을 위한 헬퍼 함수
+    auto connectKeyWithDebounce = [this](QPushButton *btn, const QString &text) {
+        connect(btn, &QPushButton::clicked, [this, text, btn]() {
+            // 버튼을 잠시 비활성화하여 중복 클릭 방지
+            btn->setEnabled(false);
+            
+            if (nameEdit && !text.isEmpty()) {
+                nameEdit->insert(text);
+            }
+            
+            // 짧은 지연 후 버튼 재활성화
+            QTimer::singleShot(100, [btn]() {
+                if (btn) {
+                    btn->setEnabled(true);
+                }
+            });
+        });
     };
 
     // 첫 번째 줄: 숫자
@@ -644,9 +746,7 @@ void PlayerDialog::createVirtualKeyboard()
     QStringList numbers = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
     for (const QString &num : numbers) {
         QPushButton *btn = createKey(num, baseKeyStyle);
-        connect(btn, &QPushButton::clicked, [this, num]() {
-            if (nameEdit) nameEdit->insert(num);
-        });
+        connectKeyWithDebounce(btn, num);
         row1->addWidget(btn);
     }
     keyboardLayout->addLayout(row1);
@@ -657,9 +757,7 @@ void PlayerDialog::createVirtualKeyboard()
     QStringList letters1 = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
     for (const QString &letter : letters1) {
         QPushButton *btn = createKey(letter, baseKeyStyle);
-        connect(btn, &QPushButton::clicked, [this, letter]() {
-            if (nameEdit) nameEdit->insert(letter);
-        });
+        connectKeyWithDebounce(btn, letter);
         row2->addWidget(btn);
     }
     keyboardLayout->addLayout(row2);
@@ -670,9 +768,7 @@ void PlayerDialog::createVirtualKeyboard()
     QStringList letters2 = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
     for (const QString &letter : letters2) {
         QPushButton *btn = createKey(letter, baseKeyStyle);
-        connect(btn, &QPushButton::clicked, [this, letter]() {
-            if (nameEdit) nameEdit->insert(letter);
-        });
+        connectKeyWithDebounce(btn, letter);
         row3->addWidget(btn);
     }
     keyboardLayout->addLayout(row3);
@@ -684,16 +780,22 @@ void PlayerDialog::createVirtualKeyboard()
     QStringList letters3 = {"Z", "X", "C", "V", "B", "N", "M"};
     for (const QString &letter : letters3) {
         QPushButton *btn = createKey(letter, baseKeyStyle);
-        connect(btn, &QPushButton::clicked, [this, letter]() {
-            if (nameEdit) nameEdit->insert(letter);
-        });
+        connectKeyWithDebounce(btn, letter);
         row4->addWidget(btn);
     }
     
-    // Backspace 버튼
+    // Backspace 버튼 (특수 처리)
     QPushButton *backspaceBtn = createKey("⌫", backspaceStyle, 55, 32);
-    connect(backspaceBtn, &QPushButton::clicked, [this]() {
-        if (nameEdit) nameEdit->backspace();
+    connect(backspaceBtn, &QPushButton::clicked, [this, backspaceBtn]() {
+        backspaceBtn->setEnabled(false);
+        if (nameEdit) {
+            nameEdit->backspace();
+        }
+        QTimer::singleShot(150, [backspaceBtn]() {
+            if (backspaceBtn) {
+                backspaceBtn->setEnabled(true);
+            }
+        });
     });
     row4->addWidget(backspaceBtn);
     
@@ -705,22 +807,29 @@ void PlayerDialog::createVirtualKeyboard()
     
     // Clear 버튼
     QPushButton *clearBtn = createKey("Clear", clearStyle, 55, 32);
-    connect(clearBtn, &QPushButton::clicked, [this]() {
-        if (nameEdit) nameEdit->clear();
+    connect(clearBtn, &QPushButton::clicked, [this, clearBtn]() {
+        clearBtn->setEnabled(false);
+        if (nameEdit) {
+            nameEdit->clear();
+        }
+        QTimer::singleShot(200, [clearBtn]() {
+            if (clearBtn) {
+                clearBtn->setEnabled(true);
+            }
+        });
     });
     row5->addWidget(clearBtn);
     
     // 스페이스바
     QPushButton *spaceBtn = createKey("Space", baseKeyStyle, 190, 32);
-    connect(spaceBtn, &QPushButton::clicked, [this]() {
-        if (nameEdit) nameEdit->insert(" ");
-    });
+    connectKeyWithDebounce(spaceBtn, " ");
     row5->addWidget(spaceBtn);
     
     // Hide 버튼
     QPushButton *hideBtn = createKey("Hide", hideStyle, 55, 32);
     connect(hideBtn, &QPushButton::clicked, [this]() {
         if (virtualKeyboard) {
+            isKeyboardShowing = false;
             virtualKeyboard->hide();
             virtualKeyboard->deleteLater();
             virtualKeyboard = nullptr;
@@ -735,10 +844,14 @@ void PlayerDialog::createVirtualKeyboard()
     int y = height() - virtualKeyboard->height() - 20;
     virtualKeyboard->move(x, y);
     
-    // 키보드 표시
+    // 키보드 표시 (즉시 표시)
     virtualKeyboard->show();
     virtualKeyboard->raise();
     virtualKeyboard->setFocus();
+    virtualKeyboard->activateWindow();
+    
+    // 키보드 표시 상태 업데이트
+    isKeyboardShowing = true;
 }
 
 void PlayerDialog::deletePlayerWithConfirmation(const QString &playerName)
@@ -819,6 +932,8 @@ void PlayerDialog::deletePlayer(const QString &playerName)
         } else {
             currentPlayer.clear();
         }
+        // 현재 플레이어 변경 신호 발생
+        emit currentPlayerChanged(currentPlayer);
     }
     
     // 플레이어 목록 UI 업데이트
@@ -827,4 +942,19 @@ void PlayerDialog::deletePlayer(const QString &playerName)
     // 삭제 완료 메시지
     QMessageBox::information(this, "✅ Player Deleted", 
         QString("Player '%1' has been deleted successfully!").arg(playerName));
+}
+
+void PlayerDialog::clearPlayerListWidgets()
+{
+    // 기존 위젯들 안전하게 정리 (메모리 누수 방지)
+    QLayoutItem *child;
+    while ((child = playersListLayout->takeAt(0)) != nullptr) {
+        if (child->widget()) {
+            // 이벤트 필터 제거
+            child->widget()->removeEventFilter(this);
+            // 위젯 삭제
+            child->widget()->deleteLater();
+        }
+        delete child;
+    }
 }
