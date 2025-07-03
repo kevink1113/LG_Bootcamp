@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <cmath>
+#include <QVector>  // QVector 추가
 
 GameWindow::GameWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -16,6 +17,7 @@ GameWindow::GameWindow(QWidget *parent)
     , obstacleTimer(nullptr)
     , pitchTimer(nullptr)
     , micProcess(nullptr)
+    , soundProcess(nullptr)  // 사운드 프로세스 초기화
     , pitchFile(nullptr)
     , backButton(nullptr)
     , playerSpeed(5)
@@ -43,6 +45,16 @@ GameWindow::~GameWindow()
     
     // 마이크 프로세스 먼저 정지
     stopMicProcess();
+    
+    // 사운드 프로세스가 있다면 정리
+    if (soundProcess) {
+        if (soundProcess->state() == QProcess::Running) {
+            soundProcess->terminate();
+            soundProcess->waitForFinished(1000);
+        }
+        delete soundProcess;
+        soundProcess = nullptr;
+    }
     
     // 타이머들 정리
     if (gameTimer) {
@@ -209,12 +221,6 @@ void GameWindow::stopMicProcess()
         micProcess->deleteLater();
         micProcess = nullptr;
     }
-    
-    if (pitchFile) {
-        pitchFile->close();
-        delete pitchFile;
-        pitchFile = nullptr;
-    }
 }
 
 void GameWindow::readPitchData()
@@ -222,17 +228,15 @@ void GameWindow::readPitchData()
     if (!gameRunning) return;
     
     // 파일에서 피치 데이터 읽기
-    if (!pitchFile) {
-        pitchFile = new QFile("/tmp/pitch_score");
-    }
+    static QFile pitchFile("/tmp/pitch_score"); // 정적 파일 객체 사용
     
-    if (pitchFile->open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QTextStream in(pitchFile);
+    if (pitchFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&pitchFile);
         QString line = in.readLine();
-        pitchFile->close();
+        pitchFile.close();
         
         if (!line.isEmpty()) {
-            QStringList parts = line.split(" ");
+            QStringList parts = line.split(' ');
             if (parts.size() >= 2) {
                 bool ok1, ok2;
                 int pitch = parts[0].toInt(&ok1);
@@ -242,11 +246,11 @@ void GameWindow::readPitchData()
                     currentPitch = pitch;
                     currentVolume = volume;
                     
-                    // 피치 값을 Y 좌표로 변환 (2옥타브 A=1 ~ 5옥타브 A=37)
-                    // 낮은 피치 = 위쪽, 높은 피치 = 아래쪽
-                    if (currentPitch > 0 && currentVolume > 0.1f) { // 볼륨이 일정 이상일 때만
-                        int pitchRange = 37 - 1; // 1~37 범위
-                        float normalizedPitch = (currentPitch - 1.0f) / pitchRange;
+                    // 볼륨이 일정 이상일 때만 계산
+                    if (currentPitch > 0 && currentVolume > 0.1f) {
+                        // 정적 변수로 캐싱
+                        static const int pitchRange = 37 - 1; // 1~37 범위
+                        const float normalizedPitch = (currentPitch - 1.0f) / pitchRange;
                         targetY = (1.0f - normalizedPitch) * (height() - PLAYER_SIZE);
                         targetY = qBound(0, targetY, height() - PLAYER_SIZE);
                     }
@@ -266,33 +270,35 @@ void GameWindow::paintEvent(QPaintEvent *event)
     // 배경 그리기
     painter.fillRect(rect(), Qt::black);
     
-    // 별 그리기 (얼굴 포함)
-    for (Star& star : stars) {
+    // 별 그리기 - 활성 별만 그리기
+    painter.setBrush(QColor(255, 223, 0));  // 밝은 노란색
+    painter.setPen(Qt::NoPen);
+    
+    // 눈과 미소 미리 생성
+    QPainterPath smilePath;
+    const qreal smileWidth = starSize/5;
+    const qreal smileHeight = starSize/8;
+    smilePath.moveTo(-smileWidth, 0);
+    smilePath.quadTo(0, smileHeight, smileWidth, 0);
+    
+    for (const Star& star : stars) {
         if (!star.active) continue;
         
         painter.save();
         painter.translate(star.pos);
         
-        // 별 그리기
-        painter.setBrush(QColor(255, 223, 0));  // 밝은 노란색
-        painter.setPen(Qt::NoPen);
+        // 별 모양 그리기
         painter.drawPath(starPath);
         
         // 얼굴 그리기
-        painter.setPen(QPen(Qt::black, 2));  // 선 굵기 감소
+        painter.setPen(QPen(Qt::black, 2));
         
-        // 귀여운 점 형태의 눈
+        // 눈
         painter.setBrush(Qt::black);
         painter.drawEllipse(QPointF(-starSize/8, -starSize/8), 2.5, 2.5);
         painter.drawEllipse(QPointF(starSize/8, -starSize/8), 2.5, 2.5);
         
-        // 간단한 U자형 미소
-        painter.setPen(QPen(Qt::black, 2));
-        QPainterPath smilePath;
-        const qreal smileWidth = starSize/5;
-        const qreal smileHeight = starSize/8;
-        smilePath.moveTo(-smileWidth, 0);  // Y 위치를 0으로 조정
-        smilePath.quadTo(0, smileHeight, smileWidth, 0);  // 제어점도 함께 조정
+        // 미소
         painter.drawPath(smilePath);
         
         painter.restore();
@@ -300,38 +306,43 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
     // 플레이어 그리기 (원형)
     painter.setBrush(Qt::white);
-    painter.setPen(Qt::white);
+    painter.setPen(Qt::NoPen);  // 테두리 없이 단색으로 (성능 향상)
     painter.drawEllipse(player);
     
-    // 장애물 그리기
+    // 장애물 그리기 - 일괄 처리
     painter.setBrush(Qt::red);
-    painter.setPen(Qt::red);
+    painter.setPen(Qt::NoPen);  // 테두리 없이 단색으로 (성능 향상)
     for (const QRect &obstacle : obstacles) {
         painter.drawRect(obstacle);
     }
     
-    // 점수와 피치 정보 표시 (오른쪽 상단)
+    // 텍스트 정보 표시 - 캐싱 및 최적화
+    static QFont infoFont("Arial", 12);  // 정적 폰트 객체
+    painter.setFont(infoFont);
     painter.setPen(Qt::white);
-    QFont font("Arial", 12);
-    painter.setFont(font);
     
-    // 텍스트 너비 계산을 위한 QFontMetrics 사용
-    QFontMetrics fm(font);
+    // 텍스트 위치 계산 (매 프레임마다 계산하지 않도록 최적화 가능)
+    static QFontMetrics fm(infoFont);
+    const int rightMargin = 10;
+    const int topMargin = 25;
+    const int lineSpacing = 20;
+    
+    // 필요한 문자열만 생성
     QString scoreText = QString("Score: %1").arg(score);
-    QString pitchText = QString("Pitch: %1").arg(currentPitch);
-    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
     QString playerText = QString("Player: %1").arg(currentPlayerName.isEmpty() ? "No Player" : currentPlayerName);
     
-    // 오른쪽 여백 설정
-    int rightMargin = 10;
-    int topMargin = 25;
-    int lineSpacing = 20;
+    // 오른쪽 정렬 텍스트
+    int rightEdge = width() - rightMargin;
+    painter.drawText(rightEdge - fm.horizontalAdvance(scoreText), topMargin, scoreText);
+    painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
     
-    // 오른쪽 정렬하여 텍스트 그리기
-    painter.drawText(width() - fm.horizontalAdvance(scoreText) - rightMargin, topMargin, scoreText);
-    painter.drawText(width() - fm.horizontalAdvance(pitchText) - rightMargin, topMargin + lineSpacing, pitchText);
-    painter.drawText(width() - fm.horizontalAdvance(volumeText) - rightMargin, topMargin + lineSpacing * 2, volumeText);
-    painter.drawText(width() - fm.horizontalAdvance(playerText) - rightMargin, topMargin + lineSpacing * 3, playerText);
+    // 디버그 정보는 조건부로 표시 (성능에 영향 줄이기)
+#ifdef QT_DEBUG
+    QString pitchText = QString("Pitch: %1").arg(currentPitch);
+    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
+    painter.drawText(rightEdge - fm.horizontalAdvance(pitchText), topMargin + lineSpacing, pitchText);
+    painter.drawText(rightEdge - fm.horizontalAdvance(volumeText), topMargin + lineSpacing * 2, volumeText);
+#endif
 }
 
 void GameWindow::updateGame()
@@ -356,36 +367,39 @@ void GameWindow::updateGame()
         player.translate(0, playerSpeed);
     }
     
-    // 장애물 이동
+    // 장애물 이동 및 제거 - 성능 최적화
+    const int leftBoundary = 0;
+    const int obstacleSpeed = 3;
+    
     for (int i = obstacles.size() - 1; i >= 0; --i) {
-        if (i < obstacles.size()) {
-            QRect &obstacle = obstacles[i];
-            obstacle.translate(-3, 0); // 장애물이 왼쪽으로 이동
-            
-            // 화면 밖으로 나간 장애물 제거
-            if (obstacle.x() + obstacle.width() < 0) {
-                obstacles.removeAt(i);
-                score++;
-            }
+        QRect &obstacle = obstacles[i];
+        obstacle.translate(-obstacleSpeed, 0); // 장애물이 왼쪽으로 이동
+        
+        // 화면 밖으로 나간 장애물 제거
+        if (obstacle.x() + obstacle.width() < leftBoundary) {
+            obstacles.removeAt(i);
+            score++;
         }
     }
     
-    // 별 이동 및 충돌 검사
-    const QRectF playerBounds(player.x() - 15, player.y() - 15, 30, 30);
-    const int halfStarSize = starSize / 2;  // 미리 계산
+    // 별 이동 및 충돌 검사 최적화
+    const QRectF playerBounds(player.x() - 15, player.y() - 15, player.width() + 30, player.height() + 30);
+    const int halfStarSize = starSize / 2;
+    const int starSpeed = 3; // 장애물과 동일한 속도
     
-    for (Star &star : stars) {
+    for (int i = stars.size() - 1; i >= 0; --i) {
+        Star &star = stars[i];
         if (!star.active) continue;
         
         // 화면 밖으로 나간 별은 즉시 비활성화
-        if (star.pos.x() + halfStarSize < 0) {
+        if (star.pos.x() + halfStarSize < leftBoundary) {
             star.active = false;
             continue;
         }
         
-        star.pos.setX(star.pos.x() - 3);  // 장애물과 같은 속도로 이동
+        star.pos.setX(star.pos.x() - starSpeed);
         
-        // 충돌 검사 최적화: 대략적인 거리 체크 먼저
+        // 충돌 검사 최적화: 대략적인 거리 체크 먼저 (빠른 거부)
         const qreal dx = qAbs(star.pos.x() - player.x());
         const qreal dy = qAbs(star.pos.y() - player.y());
         if (dx > starSize || dy > starSize) continue;  // 충돌 불가능
@@ -395,6 +409,9 @@ void GameWindow::updateGame()
         if (playerBounds.intersects(starRect)) {
             star.active = false;
             score += 3;  // 별 획득 시 3점 추가
+            
+            // 별 획득 사운드 재생 - QProcess 재사용 패턴
+            playSound("/mnt/nfs/wav/item.wav");
         }
     }
     
@@ -404,7 +421,7 @@ void GameWindow::updateGame()
         return;
     }
     
-    // 비활성 별 정리 (stars 크기가 임계값을 초과할 때만)
+    // 비활성 별 정리 (필요할 때만 처리)
     const int MAX_STARS = 25;  // 최대 별 개수
     if (stars.size() > MAX_STARS) {
         for (int i = stars.size() - 1; i >= 0; --i) {
@@ -445,6 +462,8 @@ bool GameWindow::checkCollision()
 {
     for (const QRect &obstacle : obstacles) {
         if (player.intersects(obstacle)) {
+            // 충돌 소리 재생
+            playSound("/mnt/nfs/wav/scratch.wav");
             return true;
         }
     }
@@ -572,6 +591,36 @@ void GameWindow::setupBackButton()
     connect(backButton, &QPushButton::clicked, this, &GameWindow::goBackToMainWindow);
     backButton->show();
     backButton->raise();
+}
+
+// 사운드 재생을 위한 도우미 함수
+void GameWindow::playSound(const QString &soundFile)
+{
+    // 이전 사운드 프로세스 정리
+    if (soundProcess) {
+        if (soundProcess->state() == QProcess::Running) {
+            soundProcess->terminate();
+            soundProcess->waitForFinished(100);
+        }
+        delete soundProcess;
+    }
+    
+    // 새 프로세스 시작
+    soundProcess = new QProcess(this);
+    soundProcess->start("./aplay", QStringList() << "-Dhw:0,0" << soundFile);
+    
+    // 시작 실패 시 절대 경로로 재시도
+    if (!soundProcess->waitForStarted(300)) {
+        qDebug() << "Failed to play sound. Trying absolute path...";
+        delete soundProcess;
+        
+        soundProcess = new QProcess(this);
+        soundProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << soundFile);
+        
+        if (!soundProcess->waitForStarted(300)) {
+            qDebug() << "Failed to play sound with absolute path too.";
+        }
+    }
 }
 
 void GameWindow::goBackToMainWindow()

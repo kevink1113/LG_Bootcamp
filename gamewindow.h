@@ -50,22 +50,24 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void setupBackButton();
+    void playSound(const QString &soundFile);  // 사운드 재생 도우미 함수
 
     QTimer *gameTimer;
     QTimer *obstacleTimer;
     QTimer *pitchTimer;
     QProcess *micProcess;
+    QProcess *soundProcess; // 사운드 효과를 위한 프로세스
     QFile *pitchFile;
     QPushButton *backButton;
     
     QRect player;
-    QList<QRect> obstacles;
+    QVector<QRect> obstacles;  // QList 대신 QVector 사용
     struct Star {
         QPointF pos;
         bool active;
         Star(QPointF p) : pos(p), active(true) {}
     };
-    QList<Star> stars;  // 별 위치와 상태 목록
+    QVector<Star> stars;  // QList 대신 QVector 사용 (연속 메모리 구조로 성능 향상)
     int starSize = 60;     // 별 크기
     QPainterPath starPath; // 캐시된 별 모양
     
