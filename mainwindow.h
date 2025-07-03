@@ -5,8 +5,11 @@
 #include <QDialog>
 #include <QSlider>
 #include <QPushButton>
+#include <QLineEdit>
+#include <QTimer>
 #include "gamewindow.h"
 #include "rankingdialog.h"
+#include "playerdialog.h"
 
 namespace Ui {
 class MainWindow;
@@ -30,6 +33,7 @@ private slots:
     void on_settingsButton_clicked();
     void onVolumeChanged(int value);
     void showRankingDialog();  // 이름 변경
+    void showPlayerDialog();   // 플레이어 설정 다이얼로그
 
 private:
     Ui::MainWindow *ui;
@@ -37,7 +41,9 @@ private:
     QDialog *settingsDialog;
     QSlider *volumeSlider;
     QPushButton *rankingButton;
+    QPushButton *playerButton;  // 플레이어 설정 버튼 추가
     RankingDialog *rankingDialog;
+    PlayerDialog *playerDialog;
     
     // 게임 윈도우 생성 상태 관리
     bool isCreatingGameWindow;

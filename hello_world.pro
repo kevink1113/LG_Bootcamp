@@ -17,12 +17,14 @@ SOURCES += main.cpp\
         mainwindow.cpp\
         gamewindow.cpp\
         gameoverdialog.cpp\
-        rankingdialog.cpp
+        rankingdialog.cpp\
+        playerdialog.cpp
 
 HEADERS  += mainwindow.h\
         gameoverdialog.h\
         gamewindow.h\
-        rankingdialog.h
+        rankingdialog.h\
+        playerdialog.h
 
 FORMS    += mainwindow.ui
 

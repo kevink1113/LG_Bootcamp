@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include <QMessageBox>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QDialogButtonBox>
@@ -11,7 +12,8 @@
 #include <QCheckBox>
 #include <QScreen>
 #include <QApplication>
-#include <QTimer>  // QTimer 추가
+#include <QTimer>
+#include <QStyle>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -20,7 +22,9 @@ MainWindow::MainWindow(QWidget *parent) :
     settingsDialog(nullptr),
     volumeSlider(nullptr),
     rankingButton(nullptr),
+    playerButton(nullptr),  // 플레이어 버튼 초기화
     rankingDialog(nullptr),
+    playerDialog(nullptr),
     isCreatingGameWindow(false),
     gameWindowCreationTimer(nullptr)
 {
@@ -33,6 +37,10 @@ MainWindow::MainWindow(QWidget *parent) :
     // Ranking 버튼 생성
     rankingButton = new QPushButton(this);
     rankingButton->setFixedSize(50, 50);  // 설정 버튼과 동일한 크기로 증가
+    
+    // Player 버튼 생성
+    playerButton = new QPushButton(this);
+    playerButton->setFixedSize(50, 50);  // 다른 버튼들과 동일한 크기
     
     // 기본 버튼 스타일 설정
     QString buttonStyle = 
@@ -58,22 +66,41 @@ MainWindow::MainWindow(QWidget *parent) :
         "   border: 1px solid rgba(128, 64, 0, 0.3); "  // 테두리로 그림자 효과 대체
         "}";
     
+    // 플레이어 버튼 스타일 (파란색 계열)
+    QString playerStyle = buttonStyle + 
+        "QPushButton { "
+        "   padding: 3px; "
+        "   font-weight: bold; "
+        "   color: #2196F3; "  // 파란색
+        "   border: 1px solid rgba(33, 150, 243, 0.3); "
+        "}";
+    
     // 스타일 적용
     ui->settingsButton->setStyleSheet(buttonStyle);  // 설정 버튼은 기본 스타일
     rankingButton->setStyleSheet(rankingStyle);      // 랭킹 버튼은 커스텀 스타일
+    playerButton->setStyleSheet(playerStyle);        // 플레이어 버튼은 파란색 스타일
     
     // 랭킹 버튼 설정 - 설정 버튼과 동일한 크기로 텍스트 설정
     rankingButton->setText("R");  // R 텍스트 사용
     rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
     
+    // 플레이어 버튼 설정 - 사람 아이콘 사용
+    QStyle *style = QApplication::style();
+    QIcon personIcon = style->standardIcon(QStyle::SP_FileDialogDetailedView); // 사람 모양과 유사한 아이콘
+    playerButton->setIcon(personIcon);
+    playerButton->setIconSize(QSize(30, 30));
+    
     // 버튼 클릭 시그널 연결
     connect(rankingButton, &QPushButton::clicked, this, &MainWindow::showRankingDialog);
+    connect(playerButton, &QPushButton::clicked, this, &MainWindow::showPlayerDialog);
 
     // 버튼 표시 및 정렬
     rankingButton->show();
+    playerButton->show();
     updateButtonPositions();
     ui->settingsButton->raise();  // 설정 버튼을 최상위로
     rankingButton->raise();       // 랭킹 버튼을 그 다음으로
+    playerButton->raise();        // 플레이어 버튼을 그 다음으로
     
     // 게임 윈도우 생성 타이머 초기화
     gameWindowCreationTimer = new QTimer(this);
@@ -99,6 +126,12 @@ MainWindow::~MainWindow()
         rankingDialog->close();
         rankingDialog->deleteLater();
         rankingDialog = nullptr;
+    }
+    
+    if (playerDialog) {
+        playerDialog->close();
+        playerDialog->deleteLater();
+        playerDialog = nullptr;
     }
     
     if (settingsDialog) {
@@ -431,12 +464,20 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 
 void MainWindow::updateButtonPositions()
 {
-    if (!rankingButton || !ui->settingsButton) return;
+    if (!rankingButton || !ui->settingsButton || !playerButton) return;
 
     // 버튼 크기와 여백 설정
     const int margin = 0;       // 여백 제거하여 최상단에 배치
     const int buttonSize = 50;  // 버튼 크기 유지
     const int spacing = 10;     // 버튼 사이 간격
+
+    // 플레이어 버튼을 좌측 상단에 배치
+    playerButton->setGeometry(
+        margin,                 // x (좌측)
+        margin,                 // y (상단)
+        buttonSize,             // width
+        buttonSize              // height
+    );
 
     // 설정 버튼의 위치를 우측 상단으로 설정
     ui->settingsButton->setGeometry(
@@ -455,5 +496,19 @@ void MainWindow::updateButtonPositions()
     );
     
     // 버튼들을 부모 위젯의 스택 순서 최상위로 이동
-    rankingButton->stackUnder(ui->settingsButton);  // 설정 버튼 바로 아래에 위치
+    playerButton->stackUnder(ui->settingsButton);   // 설정 버튼 바로 아래에 위치
+    rankingButton->stackUnder(playerButton);        // 플레이어 버튼 바로 아래에 위치
 }
+
+void MainWindow::showPlayerDialog()
+{
+    // PlayerDialog 인스턴스 생성 (한 번만 생성하여 재사용)
+    if (!playerDialog) {
+        playerDialog = new PlayerDialog(this);
+    }
+    
+    // 다이얼로그 실행
+    playerDialog->exec();
+}
+
+
