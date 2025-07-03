@@ -541,7 +541,18 @@ void GameWindow::spawnObstacles()
     int obstacleCount = obstacles.size() / 2; // 장애물 쌍의 개수
     fixedGenerator.seed(FIXED_SEED + obstacleCount);
     
-    int gapY = fixedGenerator.bounded(100, height() - 100);
+    // 장애물 간격을 플레이어가 통과할 수 있도록 조정
+    // 최소 간격: OBSTACLE_GAP/2 + PLAYER_SIZE + 여유공간
+    int minGapY = OBSTACLE_GAP/2 + PLAYER_SIZE + 50; // 최소 간격
+    int maxGapY = height() - OBSTACLE_GAP/2 - PLAYER_SIZE - 50; // 최대 간격
+    
+    // 범위가 유효한지 확인
+    if (minGapY >= maxGapY) {
+        minGapY = 150;
+        maxGapY = height() - 150;
+    }
+    
+    int gapY = fixedGenerator.bounded(minGapY, maxGapY);
     
     // 위쪽 장애물
     QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
@@ -553,9 +564,9 @@ void GameWindow::spawnObstacles()
 
     // 30% 확률로 별 생성 (고정된 시드값 사용)
     if (fixedGenerator.bounded(100) < 30) {
-        // 별을 장애물 사이 공간의 중앙에 배치
+        // 별을 장애물 사이 통과 가능한 공간의 중앙에 배치
         int starX = width() + OBSTACLE_WIDTH/2;
-        int starY = gapY;
+        int starY = gapY; // 장애물 사이 공간의 중앙
         stars.append(Star(QPointF(starX, starY)));
     }
     
