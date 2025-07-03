@@ -15,10 +15,16 @@ TEMPLATE = app
 
 SOURCES += main.cpp\
         mainwindow.cpp\
-        gamewindow.cpp
+        gamewindow.cpp\
+        gameoverdialog.cpp\
+        rankingdialog.cpp\
+        playerdialog.cpp
 
 HEADERS  += mainwindow.h\
-        gamewindow.h
+        gameoverdialog.h\
+        gamewindow.h\
+        rankingdialog.h\
+        playerdialog.h
 
 FORMS    += mainwindow.ui
 
