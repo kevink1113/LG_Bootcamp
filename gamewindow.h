@@ -25,6 +25,9 @@ class GameWindow : public QMainWindow
 public:
     explicit GameWindow(QWidget *parent = nullptr);
     ~GameWindow();
+    
+    // 플레이어 이름 설정 메서드 추가
+    void setCurrentPlayer(const QString &playerName);
 
 signals:
     void requestMainWindow();
@@ -82,6 +85,9 @@ private:
     int currentPitch;
     float currentVolume;
     int targetY;
+    
+    // 플레이어 정보
+    QString currentPlayerName;  // 현재 플레이어 이름 저장
     
     // 게임 요소 크기
     static const int PLAYER_SIZE = 30;  // 플레이어 크기

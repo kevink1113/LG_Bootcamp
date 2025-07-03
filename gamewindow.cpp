@@ -320,6 +320,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     QString scoreText = QString("Score: %1").arg(score);
     QString pitchText = QString("Pitch: %1").arg(currentPitch);
     QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
+    QString playerText = QString("Player: %1").arg(currentPlayerName.isEmpty() ? "No Player" : currentPlayerName);
     
     // 오른쪽 여백 설정
     int rightMargin = 10;
@@ -330,6 +331,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     painter.drawText(width() - fm.horizontalAdvance(scoreText) - rightMargin, topMargin, scoreText);
     painter.drawText(width() - fm.horizontalAdvance(pitchText) - rightMargin, topMargin + lineSpacing, pitchText);
     painter.drawText(width() - fm.horizontalAdvance(volumeText) - rightMargin, topMargin + lineSpacing * 2, volumeText);
+    painter.drawText(width() - fm.horizontalAdvance(playerText) - rightMargin, topMargin + lineSpacing * 3, playerText);
 }
 
 void GameWindow::updateGame()
@@ -465,7 +467,7 @@ void GameWindow::gameOver()
         pitchTimer->stop();
     }
     
-    GameOverDialog *dialog = new GameOverDialog(score, this);
+    GameOverDialog *dialog = new GameOverDialog(score, currentPlayerName, this);
     
     connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
         // 메인 윈도우로 돌아가라는 시그널 발생
@@ -499,8 +501,13 @@ void GameWindow::gameOver()
         update();
     });
     
-    dialog->exec();
-    dialog->deleteLater();
+    // 비모달로 표시 (show() 사용, exec() 대신)
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+    
+    // 다이얼로그가 닫힐 때 자동으로 삭제되도록 설정
+    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
 }
 
 void GameWindow::keyPressEvent(QKeyEvent *event)
@@ -588,4 +595,9 @@ void GameWindow::goBackToMainWindow()
     
     // 게임 창 닫기
     close();
+}
+
+void GameWindow::setCurrentPlayer(const QString &playerName)
+{
+    currentPlayerName = playerName;
 }

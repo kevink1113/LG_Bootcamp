@@ -406,6 +406,13 @@ void MainWindow::createNewGameWindow()
             return;
         }
         
+        // 현재 플레이어 이름을 게임 윈도우에 설정
+        QString currentPlayer = "";
+        if (playerDialog) {
+            currentPlayer = playerDialog->getCurrentPlayer();
+        }
+        gameWindow->setCurrentPlayer(currentPlayer);
+        
         // 게임 윈도우가 닫힐 때의 정리 연결
         connect(gameWindow, &GameWindow::destroyed, this, [this]() {
             qDebug() << "Game window destroyed signal received";
