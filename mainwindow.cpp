@@ -338,26 +338,24 @@ void MainWindow::onVolumeChanged(int value)
 
 void MainWindow::on_menuButton1_clicked()
 {
-    // 이미 게임 윈도우를 생성 중이면 무시
-    if (isCreatingGameWindow) {
-        qDebug() << "Game window creation already in progress, ignoring click";
-        return;
+    // 기존 게임 윈도우 정리
+    if (gameWindow) {
+        gameWindow->disconnect(); // 모든 시그널 연결 해제
+        gameWindow->close();
+        gameWindow->deleteLater();
+        gameWindow = nullptr;
     }
     
-    qDebug() << "Game start button clicked";
-    
-    // 기존 게임 윈도우가 있으면 정리
+    // 새 게임 윈도우 생성
+    gameWindow = new GameWindow(nullptr, false); // 싱글플레이어 모드
     if (gameWindow) {
-        qDebug() << "Cleaning up existing game window...";
-        isCreatingGameWindow = true;
-        cleanupGameWindow();
-        
-        // 정리 완료 후 새 게임 윈도우 생성
-        gameWindowCreationTimer->start(300);  // 300ms 후 생성
-    } else {
-        // 기존 게임 윈도우가 없으면 바로 생성
-        isCreatingGameWindow = true;
-        gameWindowCreationTimer->start(100);  // 100ms 후 생성
+        gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
+        connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+            showFullScreen();
+            raise();
+            activateWindow();
+        });
+        gameWindow->show();
     }
 }
 
@@ -445,15 +443,25 @@ void MainWindow::createNewGameWindow()
 
 void MainWindow::on_menuButton2_clicked()
 {
+    // 기존 게임 윈도우 정리
     if (gameWindow) {
+        gameWindow->disconnect(); // 모든 시그널 연결 해제
         gameWindow->close();
         gameWindow->deleteLater();
         gameWindow = nullptr;
     }
 
+    // 새 게임 윈도우 생성
     gameWindow = new GameWindow(nullptr, true); // 멀티플레이어 모드
-    gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
-    gameWindow->show();
+    if (gameWindow) {
+        gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
+        connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+            showFullScreen();
+            raise();
+            activateWindow();
+        });
+        gameWindow->show();
+    }
 }
 
 void MainWindow::on_menuButton3_clicked()

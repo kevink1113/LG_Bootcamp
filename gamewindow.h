@@ -31,9 +31,17 @@ struct PlayerData {
     int y;
     int score;
     bool gameOver;
+    bool isReady;
     QHostAddress address;
     quint16 port;
     qint64 lastSeen;
+};
+
+struct GameState {
+    QList<QRect> obstacles;
+    QList<QPointF> starPositions;
+    int currentScore;
+    qint64 timestamp;
 };
 
 class GameWindow : public QMainWindow
@@ -62,6 +70,7 @@ private slots:
     void readPendingDatagrams();
     void broadcastPlayerData();
     void cleanupInactivePlayers();
+    void startGameCountdown();
 
 private:
     void setupGame();
@@ -77,6 +86,11 @@ private:
     void updatePlayerPosition(int x, int y, int score, bool gameOver);
     void sendPlayerData();
     void processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port);
+    void sendGameState();
+    void processGameState(const QJsonObject &gameState);
+    void startLobby();
+    void leaveLobby();
+    void checkGameStart();
 
     QTimer *gameTimer;
     QTimer *obstacleTimer;
@@ -89,9 +103,16 @@ private:
     QUdpSocket *udpSocket;
     QTimer *broadcastTimer;
     QTimer *cleanupTimer;
+    QTimer *countdownTimer;
     QString playerId;
     QList<PlayerData> otherPlayers;
     bool isMultiplayerMode;
+    bool isInLobby;
+    bool isGameStarted;
+    bool isHost;
+    int countdownValue;
+    GameState sharedGameState;
+    qint64 lastGameStateUpdate;
     
     QRect player;
     QList<QRect> obstacles;
@@ -133,6 +154,7 @@ private:
     static const int BROADCAST_INTERVAL = 100; // 100ms
     static const int CLEANUP_INTERVAL = 2000; // 2초
     static const int PLAYER_TIMEOUT = 3000; // 3초
+    static const quint32 FIXED_SEED = 12345; // 고정된 랜덤 시드값
 };
 
 #endif // GAMEWINDOW_H
