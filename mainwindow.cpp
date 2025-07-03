@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include <QMessageBox>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QDialogButtonBox>
@@ -11,26 +12,156 @@
 #include <QCheckBox>
 #include <QScreen>
 #include <QApplication>
+#include <QTimer>
+#include <QStyle>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
     gameWindow(nullptr),
     settingsDialog(nullptr),
-    volumeSlider(nullptr)
+    volumeSlider(nullptr),
+    rankingButton(nullptr),
+    playerButton(nullptr),  // 플레이어 버튼 초기화
+    rankingDialog(nullptr),
+    playerDialog(nullptr),
+    currentPlayerLabel(nullptr),  // 현재 플레이어 라벨 초기화
+    isCreatingGameWindow(false),
+    gameWindowCreationTimer(nullptr)
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
+    
+    // 설정 버튼 크기 설정 (크기 일관성을 위해)
+    ui->settingsButton->setFixedSize(50, 50);  // 크기 증가
+    
+    // Ranking 버튼 생성
+    rankingButton = new QPushButton(this);
+    rankingButton->setFixedSize(50, 50);  // 설정 버튼과 동일한 크기로 증가
+    
+    // Player 버튼 생성
+    playerButton = new QPushButton(this);
+    playerButton->setFixedSize(50, 50);  // 다른 버튼들과 동일한 크기
+    
+    // 기본 버튼 스타일 설정
+    QString buttonStyle = 
+        "QPushButton {"
+        "   background-color: rgba(255, 255, 255, 180);"
+        "   border: none;"
+        "   border-radius: 10px;"
+        "   padding: 5px;"
+        "}"
+        "QPushButton:hover {"
+        "   background-color: rgba(255, 255, 255, 220);"
+        "}"
+        "QPushButton:pressed {"
+        "   background-color: rgba(200, 200, 200, 220);"
+        "}";
+    
+    // 랭킹 버튼 스타일 (노란색 텍스트)
+    QString rankingStyle = buttonStyle + 
+        "QPushButton { "
+        "   padding: 3px; "  // 패딩 조정하여 텍스트 위치 최적화
+        "   font-weight: bold; "
+        "   color: #FFB700; "  // 진한 황금색
+        "   border: 1px solid rgba(128, 64, 0, 0.3); "  // 테두리로 그림자 효과 대체
+        "}";
+    
+    // 플레이어 버튼 스타일 (파란색 계열)
+    QString playerStyle = buttonStyle + 
+        "QPushButton { "
+        "   padding: 3px; "
+        "   font-weight: bold; "
+        "   color: #2196F3; "  // 파란색
+        "   border: 1px solid rgba(33, 150, 243, 0.3); "
+        "}";
+    
+    // 스타일 적용
+    ui->settingsButton->setStyleSheet(buttonStyle);  // 설정 버튼은 기본 스타일
+    rankingButton->setStyleSheet(rankingStyle);      // 랭킹 버튼은 커스텀 스타일
+    playerButton->setStyleSheet(playerStyle);        // 플레이어 버튼은 파란색 스타일
+    
+    // 랭킹 버튼 설정 - 설정 버튼과 동일한 크기로 텍스트 설정
+    rankingButton->setText("R");  // R 텍스트 사용
+    rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
+    
+    // 플레이어 버튼 설정 - 사람 아이콘 사용
+    QStyle *style = QApplication::style();
+    QIcon personIcon = style->standardIcon(QStyle::SP_FileDialogDetailedView); // 사람 모양과 유사한 아이콘
+    playerButton->setIcon(personIcon);
+    playerButton->setIconSize(QSize(30, 30));
+    
+    // 현재 플레이어 표시 라벨 생성
+    currentPlayerLabel = new QLabel(this);
+    currentPlayerLabel->setAlignment(Qt::AlignCenter);
+    currentPlayerLabel->setStyleSheet(R"(
+        QLabel {
+            background-color: rgba(255, 255, 255, 200);
+            border: 2px solid #2196F3;
+            border-radius: 12px;
+            padding: 8px 16px;
+            font-size: 14pt;
+            font-weight: bold;
+            color: #2c3e50;
+            min-width: 200px;
+        }
+    )");
+    currentPlayerLabel->setText("No Player Selected");
+    currentPlayerLabel->show();
+    
+    // 버튼 클릭 시그널 연결
+    connect(rankingButton, &QPushButton::clicked, this, &MainWindow::showRankingDialog);
+    connect(playerButton, &QPushButton::clicked, this, &MainWindow::showPlayerDialog);
+
+    // 버튼 표시 및 정렬
+    rankingButton->show();
+    playerButton->show();
+    updateButtonPositions();
+    ui->settingsButton->raise();  // 설정 버튼을 최상위로
+    rankingButton->raise();       // 랭킹 버튼을 그 다음으로
+    playerButton->raise();        // 플레이어 버튼을 그 다음으로
+    
+    // 게임 윈도우 생성 타이머 초기화
+    gameWindowCreationTimer = new QTimer(this);
+    gameWindowCreationTimer->setSingleShot(true);
+    connect(gameWindowCreationTimer, &QTimer::timeout, this, &MainWindow::createNewGameWindow);
+    
     createSettingsDialog();
+    
+    // 초기 플레이어 표시 업데이트 (지연 실행으로 모든 UI가 준비된 후 실행)
+    QTimer::singleShot(100, this, &MainWindow::updateCurrentPlayerDisplay);
 }
 
 MainWindow::~MainWindow()
 {
-    if (gameWindow) {
-        gameWindow->close();
-        gameWindow->deleteLater();
-        gameWindow = nullptr;
+    // 게임 윈도우 생성 타이머 정리
+    if (gameWindowCreationTimer) {
+        gameWindowCreationTimer->stop();
+        gameWindowCreationTimer->deleteLater();
+        gameWindowCreationTimer = nullptr;
     }
+    
+    // 게임 윈도우 정리
+    cleanupGameWindow();
+    
+    if (rankingDialog) {
+        rankingDialog->close();
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+    
+    if (playerDialog) {
+        playerDialog->close();
+        playerDialog->deleteLater();
+        playerDialog = nullptr;
+    }
+    
+    if (settingsDialog) {
+        settingsDialog->close();
+        settingsDialog->deleteLater();
+        settingsDialog = nullptr;
+    }
+    
     delete ui;
 }
 
@@ -207,24 +338,109 @@ void MainWindow::onVolumeChanged(int value)
 
 void MainWindow::on_menuButton1_clicked()
 {
-    if (gameWindow) {
-        gameWindow->close();
-        gameWindow->deleteLater();
-        gameWindow = nullptr;
-    }
-    
-    qDebug() << "Creating new game window...";
-    // 게임 윈도우를 독립적인 윈도우로 생성
-    gameWindow = new GameWindow(nullptr);
-    
-    if (!gameWindow) {
-        qDebug() << "Failed to create game window!";
+    // 이미 게임 윈도우를 생성 중이면 무시
+    if (isCreatingGameWindow) {
+        qDebug() << "Game window creation already in progress, ignoring click";
         return;
     }
     
-    gameWindow->setAttribute(Qt::WA_DeleteOnClose, false);
-    qDebug() << "Initializing game window...";
-    // setupGame 함수에서 show()를 처리하므로 여기서는 호출하지 않음
+    qDebug() << "Game start button clicked";
+    
+    // 기존 게임 윈도우가 있으면 정리
+    if (gameWindow) {
+        qDebug() << "Cleaning up existing game window...";
+        isCreatingGameWindow = true;
+        cleanupGameWindow();
+        
+        // 정리 완료 후 새 게임 윈도우 생성
+        gameWindowCreationTimer->start(300);  // 300ms 후 생성
+    } else {
+        // 기존 게임 윈도우가 없으면 바로 생성
+        isCreatingGameWindow = true;
+        gameWindowCreationTimer->start(100);  // 100ms 후 생성
+    }
+}
+
+void MainWindow::cleanupGameWindow()
+{
+    if (gameWindow) {
+        qDebug() << "Cleaning up game window...";
+        
+        // 게임 윈도우의 모든 연결 해제
+        gameWindow->disconnect();
+        
+        // 게임 윈도우 숨기기 및 정리
+        gameWindow->hide();
+        gameWindow->close();
+        
+        // 메모리 정리
+        gameWindow->deleteLater();
+        gameWindow = nullptr;
+        
+        qDebug() << "Game window cleanup completed";
+    }
+}
+
+void MainWindow::createNewGameWindow()
+{
+    // 이중 생성 방지
+    if (gameWindow != nullptr) {
+        qDebug() << "Game window already exists, skipping creation";
+        isCreatingGameWindow = false;
+        return;
+    }
+    
+    qDebug() << "Creating new game window...";
+    
+    // 메인 윈도우를 먼저 숨겨서 매끄러운 전환 효과
+    hide();
+    
+    try {
+        // 게임 윈도우를 독립적인 윈도우로 생성
+        gameWindow = new GameWindow(nullptr);
+        
+        if (!gameWindow) {
+            qDebug() << "Failed to create game window!";
+            showFullScreen(); // 실패 시 메인 윈도우 다시 표시
+            isCreatingGameWindow = false;
+            return;
+        }
+        
+        // 게임 윈도우가 닫힐 때의 정리 연결
+        connect(gameWindow, &GameWindow::destroyed, this, [this]() {
+            qDebug() << "Game window destroyed signal received";
+            gameWindow = nullptr;
+            isCreatingGameWindow = false;
+        });
+        
+        // 게임 윈도우에서 메인 윈도우로 돌아가라는 시그널 연결
+        connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+            qDebug() << "Request main window signal received";
+            // 즉시 메인 윈도우 표시
+            showFullScreen();
+            raise();
+            activateWindow();
+        });
+        
+        qDebug() << "Game window created and shown successfully";
+        
+    } catch (const std::exception& e) {
+        qDebug() << "Exception while creating game window:" << e.what();
+        if (gameWindow) {
+            gameWindow->deleteLater();
+            gameWindow = nullptr;
+        }
+        show(); // 실패 시 메인 윈도우 다시 표시
+    } catch (...) {
+        qDebug() << "Unknown exception while creating game window";
+        if (gameWindow) {
+            gameWindow->deleteLater();
+            gameWindow = nullptr;
+        }
+        showFullScreen(); // 실패 시 메인 윈도우 다시 표시
+    }
+    
+    isCreatingGameWindow = false;
 }
 
 void MainWindow::on_menuButton2_clicked()
@@ -236,3 +452,147 @@ void MainWindow::on_menuButton3_clicked()
 {
     QMessageBox::information(this, "Menu 3", "Menu 3 was selected!");
 }
+
+void MainWindow::showRankingDialog()
+{
+    // 기존 다이얼로그가 있으면 삭제
+    if (rankingDialog) {
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+    
+    // 새 다이얼로그 생성
+    rankingDialog = new RankingDialog(this);
+    if (!rankingDialog) {
+        qDebug() << "Failed to create ranking dialog!";
+        return;
+    }
+    
+    // 다이얼로그 표시
+    rankingDialog->exec();
+    
+    // 실행 후 정리
+    if (rankingDialog) {
+        rankingDialog->deleteLater();
+        rankingDialog = nullptr;
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    updateButtonPositions();
+}
+
+void MainWindow::updateButtonPositions()
+{
+    if (!rankingButton || !ui->settingsButton || !playerButton || !currentPlayerLabel) return;
+
+    // 버튼 크기와 여백 설정
+    const int margin = 0;       // 여백 제거하여 최상단에 배치
+    const int buttonSize = 50;  // 버튼 크기 유지
+    const int spacing = 10;     // 버튼 사이 간격
+
+    // 플레이어 버튼을 좌측 상단에 배치
+    playerButton->setGeometry(
+        margin,                 // x (좌측)
+        margin,                 // y (상단)
+        buttonSize,             // width
+        buttonSize              // height
+    );
+
+    // 설정 버튼의 위치를 우측 상단으로 설정
+    ui->settingsButton->setGeometry(
+        width() - buttonSize - margin,  // x
+        margin,                         // y
+        buttonSize,                     // width
+        buttonSize                      // height
+    );
+    
+    // 랭킹 버튼을 설정 버튼 왼쪽에 배치 (간격 추가)
+    rankingButton->setGeometry(
+        width() - (2 * buttonSize) - margin - spacing,  // x
+        margin,                                         // y
+        buttonSize,                                     // width
+        buttonSize                                      // height
+    );
+    
+    // 현재 플레이어 라벨을 상단 중앙에 배치
+    currentPlayerLabel->adjustSize();  // 내용에 맞춰 크기 조정
+    QSize labelSize = currentPlayerLabel->size();
+    currentPlayerLabel->setGeometry(
+        (width() - labelSize.width()) / 2,  // x (중앙)
+        margin + 40,                        // y (상단에서 약간 아래)
+        labelSize.width(),                  // width
+        labelSize.height()                  // height
+    );
+    
+    // 버튼들을 부모 위젯의 스택 순서 최상위로 이동
+    currentPlayerLabel->raise();             // 플레이어 라벨을 최상위로
+    ui->settingsButton->raise();             // 설정 버튼을 그 다음으로
+    rankingButton->raise();                  // 랭킹 버튼을 그 다음으로
+    playerButton->raise();                   // 플레이어 버튼을 그 다음으로
+}
+
+void MainWindow::showPlayerDialog()
+{
+    // PlayerDialog 인스턴스 생성 (한 번만 생성하여 재사용)
+    if (!playerDialog) {
+        playerDialog = new PlayerDialog(this);
+        
+        // 플레이어 변경 신호 연결
+        connect(playerDialog, &PlayerDialog::currentPlayerChanged, 
+                this, &MainWindow::updateCurrentPlayerDisplay);
+    }
+    
+    // 다이얼로그 실행
+    int result = playerDialog->exec();
+    
+    // 다이얼로그가 닫힌 후 플레이어 표시 업데이트
+    if (result == QDialog::Accepted) {
+        updateCurrentPlayerDisplay();
+    }
+}
+
+void MainWindow::updateCurrentPlayerDisplay()
+{
+    if (!currentPlayerLabel || !playerDialog) return;
+    
+    QString currentPlayer = playerDialog->getCurrentPlayer();
+    
+    if (currentPlayer.isEmpty()) {
+        currentPlayerLabel->setText("No Player Selected");
+        currentPlayerLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: rgba(255, 255, 255, 200);
+                border: 2px solid #95a5a6;
+                border-radius: 12px;
+                padding: 8px 16px;
+                font-size: 14pt;
+                font-weight: bold;
+                color: #7f8c8d;
+                min-width: 200px;
+            }
+        )");
+    } else {
+        currentPlayerLabel->setText("Player : " + currentPlayer);
+        currentPlayerLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: rgba(46, 204, 113, 200);
+                border: 2px solid #27ae60;
+                border-radius: 12px;
+                padding: 8px 16px;
+                font-size: 14pt;
+                font-weight: bold;
+                color: white;
+                min-width: 200px;
+                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+            }
+        )");
+    }
+    
+    // 라벨 크기가 변경되었을 수 있으므로 위치 재조정
+    updateButtonPositions();
+}
+
+

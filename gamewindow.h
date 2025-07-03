@@ -26,6 +26,9 @@ public:
     explicit GameWindow(QWidget *parent = nullptr);
     ~GameWindow();
 
+signals:
+    void requestMainWindow();
+
 protected:
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;

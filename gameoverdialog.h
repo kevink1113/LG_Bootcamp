@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include "rankingdialog.h"
 
 class GameOverDialog : public QDialog
 {
@@ -19,13 +20,19 @@ signals:
     void rankingRequested();
     void restartRequested();
 
+private slots:
+    void onRankingButtonClicked();
+
 private:
     void setupUI(int score);
     
+    int currentScore;  // 현재 점수 저장
+    bool scoreAdded;   // 점수가 이미 추가되었는지 확인하는 플래그
     QLabel *scoreLabel;
     QPushButton *mainButton;
     QPushButton *rankingButton;
     QPushButton *restartButton;
+    RankingDialog *rankingDialog;
 };
 
 #endif // GAMEOVERDIALOG_H
