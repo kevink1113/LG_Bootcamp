@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QLineEdit>
 #include <QTimer>
+#include <QProcess>
 #include "gamewindow.h"
 #include "rankingdialog.h"
 #include "playerdialog.h"
@@ -45,6 +46,11 @@ private:
     RankingDialog *rankingDialog;
     PlayerDialog *playerDialog;
     QLabel *currentPlayerLabel;  // 현재 플레이어 이름 표시 라벨
+    bool backgroundMusicEnabled;  // 배경 음악 활성화 상태
+    
+    // 오디오 관련 멤버 변수
+    QProcess *backgroundMusicProcess; // 리눅스 명령어로 음악 재생을 위한 프로세스
+    int volumeLevel;                  // 볼륨 레벨 (0-100)
     
     // 게임 윈도우 생성 상태 관리
     bool isCreatingGameWindow;
@@ -55,6 +61,10 @@ private:
     void updateCurrentPlayerDisplay();  // 현재 플레이어 표시 업데이트
     void createNewGameWindow();  // 새 함수 추가
     void cleanupGameWindow();    // 게임 윈도우 정리 함수
+    
+    // 오디오 관련 메서드
+    void initAudio();  // 오디오 초기화
+    void controlBackgroundMusicProcess(bool start); // 리눅스 명령어로 배경 음악 제어
 };
 
 #endif // MAINWINDOW_H
