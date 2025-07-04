@@ -276,32 +276,49 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.restore();
     }
     
-    // 장애물 그리기 (이미지 캐싱 및 FastTransformation)
-    static QPixmap obstacleTopPixmap, obstacleBottomPixmap;
-    static QSize lastTopSize, lastBottomSize;
-    static QPixmap scaledTop, scaledBottom;
-    if (obstacleTopPixmap.isNull())
-        obstacleTopPixmap.load("/mnt/nfs/obstacle_top.png");
-    if (obstacleBottomPixmap.isNull())
-        obstacleBottomPixmap.load("/mnt/nfs/obstacle_bottom.png");
+    // 장애물 그리기 (brick_pillar.png의 중앙 기둥 부분만 세로만 스케일, 가로는 원본 비율)
+    static QPixmap pillarPixmap;
+    static QMap<int, QPixmap> pillarVCache; // height별 캐시
+    static int lastMaxPillarHeight = 0;
+    static QPixmap croppedPillar;
+    if (pillarPixmap.isNull())
+        pillarPixmap.load("/mnt/nfs/brick_pillar.png");
+    const int REAL_PILLAR_WIDTH = 60;
+    // 1. 현재 장애물 중 가장 높은 높이 계산 (장애물 없으면 0)
+    int maxPillarHeight = 0;
+    for (const QRect &obstacle : obstacles) {
+        if (obstacle.height() > maxPillarHeight)
+            maxPillarHeight = obstacle.height();
+    }
+    // 2. 가장 높은 기둥 높이가 바뀌었을 때만 크롭 (불필요한 연산 방지)
+    if (!pillarPixmap.isNull() && maxPillarHeight > 0 && maxPillarHeight != lastMaxPillarHeight) {
+        int imgW = pillarPixmap.width();
+        int imgH = pillarPixmap.height();
+        int srcX = (imgW - REAL_PILLAR_WIDTH) / 2;
+        int cropH = qMin(maxPillarHeight, imgH); // 이미지보다 높으면 이미지 끝까지만
+        croppedPillar = pillarPixmap.copy(srcX, 0, REAL_PILLAR_WIDTH, cropH);
+        pillarVCache.clear(); // 높이별 캐시도 무효화
+        lastMaxPillarHeight = maxPillarHeight;
+    }
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
-        if (obstacle.y() == 0 && !obstacleTopPixmap.isNull()) {
-            if (lastTopSize != obstacle.size()) {
-                scaledTop = obstacleTopPixmap.scaled(obstacle.size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
-                lastTopSize = obstacle.size();
+        int h = obstacle.height();
+        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        int y = obstacle.y();
+        if (!croppedPillar.isNull()) {
+            QPixmap scaled;
+            if (pillarVCache.contains(h)) {
+                scaled = pillarVCache.value(h);
+            } else {
+                // 3. 크롭된 이미지를 각 기둥 높이에 맞게 세로로만 스케일
+                scaled = croppedPillar.scaled(REAL_PILLAR_WIDTH, h, Qt::IgnoreAspectRatio, Qt::FastTransformation); // FastTransformation로 성능 향상
+                pillarVCache.insert(h, scaled);
             }
-            painter.drawPixmap(obstacle, scaledTop);
-        } else if (obstacle.y() > 0 && !obstacleBottomPixmap.isNull()) {
-            if (lastBottomSize != obstacle.size()) {
-                scaledBottom = obstacleBottomPixmap.scaled(obstacle.size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
-                lastBottomSize = obstacle.size();
-            }
-            painter.drawPixmap(obstacle, scaledBottom);
+            painter.drawPixmap(x, y, REAL_PILLAR_WIDTH, h, scaled);
         } else {
             painter.setBrush(Qt::red);
             painter.setPen(Qt::NoPen);
-            painter.drawRect(obstacle);
+            painter.drawRect(x, y, REAL_PILLAR_WIDTH, h);
         }
     }
     
