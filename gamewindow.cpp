@@ -67,7 +67,7 @@ GameWindow::~GameWindow()
         // 타이머 안전 정리
         auto safeDeleteTimer = [](QTimer*& timer) {
             if (timer) {
-                timer->stop();
+                if (timer->isActive()) timer->stop();
                 timer->deleteLater();
                 timer = nullptr;
             }
@@ -76,28 +76,17 @@ GameWindow::~GameWindow()
         safeDeleteTimer(obstacleTimer);
         safeDeleteTimer(pitchTimer);
         safeDeleteTimer(countdownTimer);
-        safeDeleteTimer(broadcastTimer);
-        safeDeleteTimer(cleanupTimer);
+        // 멀티플레이어 관련 타이머/소켓은 stopMultiplayer에서만 정리
 
-        // 멀티플레이어 정리 (stopMultiplayer 내부에서 deleteLater 중복 호출 안 하도록 주의)
+        // 멀티플레이어 정리 (deleteLater 중복 호출 방지)
         if (udpSocket || broadcastTimer || cleanupTimer || !otherPlayers.isEmpty()) {
             stopMultiplayer();
         }
 
-        // 마이크 프로세스 안전 정리
-        if (micProcess) {
-            if (micProcess->state() != QProcess::NotRunning) {
-                micProcess->terminate();
-                if (!micProcess->waitForFinished(2000)) {
-                    micProcess->kill();
-                    micProcess->waitForFinished(1000);
-                }
-            }
-            micProcess->deleteLater();
-            micProcess = nullptr;
-        }
+        // 마이크 프로세스 안전 정리 (중복 deleteLater 방지)
+        stopMicProcess();
 
-        // 사운드 프로세스 안전 정리
+        // 사운드 프로세스 안전 정리 (중복 deleteLater 방지)
         if (soundProcess) {
             if (soundProcess->state() != QProcess::NotRunning) {
                 soundProcess->terminate();
@@ -275,9 +264,11 @@ void GameWindow::startMicProcess()
 void GameWindow::stopMicProcess()
 {
     if (micProcess) {
-        micProcess->terminate();
-        if (!micProcess->waitForFinished(3000)) {
-            micProcess->kill();
+        if (micProcess->state() != QProcess::NotRunning) {
+            micProcess->terminate();
+            if (!micProcess->waitForFinished(3000)) {
+                micProcess->kill();
+            }
         }
         micProcess->deleteLater();
         micProcess = nullptr;
@@ -945,37 +936,32 @@ void GameWindow::startMultiplayer()
 
 void GameWindow::stopMultiplayer()
 {
+    // 중복 호출 방지
+    if (!udpSocket && !broadcastTimer && !cleanupTimer && otherPlayers.isEmpty()) return;
     qDebug() << "Stopping multiplayer mode...";
-    
-    // 멀티플레이어 상태 초기화
     isInLobby = false;
     isGameStarted = false;
     isHost = false;
     countdownValue = 0;
-    
+
     // 타이머들 정리
     if (broadcastTimer) {
-        broadcastTimer->stop();
+        if (broadcastTimer->isActive()) broadcastTimer->stop();
         broadcastTimer->deleteLater();
         broadcastTimer = nullptr;
     }
-    
     if (cleanupTimer) {
-        cleanupTimer->stop();
+        if (cleanupTimer->isActive()) cleanupTimer->stop();
         cleanupTimer->deleteLater();
         cleanupTimer = nullptr;
     }
-    
     // UDP 소켓 정리
     if (udpSocket) {
         udpSocket->close();
         udpSocket->deleteLater();
         udpSocket = nullptr;
     }
-    
-    // 플레이어 목록 정리
     otherPlayers.clear();
-    
     qDebug() << "Multiplayer mode stopped";
 }
 
