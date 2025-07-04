@@ -51,6 +51,9 @@ class GameWindow : public QMainWindow
 public:
     explicit GameWindow(QWidget *parent = nullptr, bool isMultiplayer = false);
     ~GameWindow();
+    
+    // 플레이어 이름 설정 메서드 추가
+    void setCurrentPlayer(const QString &playerName);
 
 signals:
     void requestMainWindow();
@@ -79,6 +82,9 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void setupBackButton();
+
+    void playSound(const QString &soundFile);  // 사운드 재생 도우미 함수
+
     
     // 멀티플레이어 관련 함수들
     void startMultiplayer();
@@ -92,10 +98,12 @@ private:
     void leaveLobby();
     void checkGameStart();
 
+
     QTimer *gameTimer;
     QTimer *obstacleTimer;
     QTimer *pitchTimer;
     QProcess *micProcess;
+    QProcess *soundProcess; // 사운드 효과를 위한 프로세스
     QFile *pitchFile;
     QPushButton *backButton;
     
@@ -115,13 +123,13 @@ private:
     qint64 lastGameStateUpdate;
     
     QRect player;
-    QList<QRect> obstacles;
+    QVector<QRect> obstacles;  // QList 대신 QVector 사용
     struct Star {
         QPointF pos;
         bool active;
         Star(QPointF p) : pos(p), active(true) {}
     };
-    QList<Star> stars;  // 별 위치와 상태 목록
+    QVector<Star> stars;  // QList 대신 QVector 사용 (연속 메모리 구조로 성능 향상)
     int starSize = 60;     // 별 크기
     QPainterPath starPath; // 캐시된 별 모양
     
@@ -142,10 +150,18 @@ private:
     float currentVolume;
     int targetY;
     
+    // 플레이어 정보
+    QString currentPlayerName;  // 현재 플레이어 이름 저장
+    
     // 게임 요소 크기
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
-    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
+
+    static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
+
+    QPixmap playerImage; // 플레이어 이미지
+
+//    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
     static const int WINDOW_WIDTH = 800;  // 윈도우 너비
     static const int WINDOW_HEIGHT = 600;  // 윈도우 높이
     
@@ -155,6 +171,7 @@ private:
     static const int CLEANUP_INTERVAL = 2000; // 2초
     static const int PLAYER_TIMEOUT = 3000; // 3초
     static const quint32 FIXED_SEED = 0xDEADBEEF; // 더 복잡한 고정된 랜덤 시드값
+
 };
 
 #endif // GAMEWINDOW_H
