@@ -18,12 +18,38 @@
 #include "gameoverdialog.h"
 #include <QPushButton>
 
+// 멀티플레이어 관련 헤더들
+#include <QUdpSocket>
+#include <QHostAddress>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
+
+struct PlayerData {
+    QString playerId;
+    int x;
+    int y;
+    int score;
+    bool gameOver;
+    bool isReady;
+    QHostAddress address;
+    quint16 port;
+    qint64 lastSeen;
+};
+
+struct GameState {
+    QList<QRect> obstacles;
+    QList<QPointF> starPositions;
+    int currentScore;
+    qint64 timestamp;
+};
+
 class GameWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit GameWindow(QWidget *parent = nullptr);
+    explicit GameWindow(QWidget *parent = nullptr, bool isMultiplayer = false);
     ~GameWindow();
     
     // 플레이어 이름 설정 메서드 추가
@@ -42,6 +68,12 @@ private slots:
     void spawnObstacles();
     void readPitchData();
     void goBackToMainWindow();
+    
+    // 멀티플레이어 관련 슬롯들
+    void readPendingDatagrams();
+    void broadcastPlayerData();
+    void cleanupInactivePlayers();
+    void startGameCountdown();
 
 private:
     void setupGame();
@@ -50,7 +82,22 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void setupBackButton();
+
     void playSound(const QString &soundFile);  // 사운드 재생 도우미 함수
+
+    
+    // 멀티플레이어 관련 함수들
+    void startMultiplayer();
+    void stopMultiplayer();
+    void updatePlayerPosition(int x, int y, int score, bool gameOver);
+    void sendPlayerData();
+    void processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port);
+    void sendGameState();
+    void processGameState(const QJsonObject &gameState);
+    void startLobby();
+    void leaveLobby();
+    void checkGameStart();
+
 
     QTimer *gameTimer;
     QTimer *obstacleTimer;
@@ -59,6 +106,21 @@ private:
     QProcess *soundProcess; // 사운드 효과를 위한 프로세스
     QFile *pitchFile;
     QPushButton *backButton;
+    
+    // 멀티플레이어 관련 멤버들
+    QUdpSocket *udpSocket;
+    QTimer *broadcastTimer;
+    QTimer *cleanupTimer;
+    QTimer *countdownTimer;
+    QString playerId;
+    QList<PlayerData> otherPlayers;
+    bool isMultiplayerMode;
+    bool isInLobby;
+    bool isGameStarted;
+    bool isHost;
+    int countdownValue;
+    GameState sharedGameState;
+    qint64 lastGameStateUpdate;
     
     QRect player;
     QVector<QRect> obstacles;  // QList 대신 QVector 사용
@@ -94,9 +156,22 @@ private:
     // 게임 요소 크기
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
+
     static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
 
     QPixmap playerImage; // 플레이어 이미지
+
+    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
+    static const int WINDOW_WIDTH = 800;  // 윈도우 너비
+    static const int WINDOW_HEIGHT = 600;  // 윈도우 높이
+    
+    // 멀티플레이어 상수들
+    static const quint16 BROADCAST_PORT = 12345;
+    static const int BROADCAST_INTERVAL = 100; // 100ms
+    static const int CLEANUP_INTERVAL = 2000; // 2초
+    static const int PLAYER_TIMEOUT = 3000; // 3초
+    static const quint32 FIXED_SEED = 0xDEADBEEF; // 더 복잡한 고정된 랜덤 시드값
+
 };
 
 #endif // GAMEWINDOW_H
