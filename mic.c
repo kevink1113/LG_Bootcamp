@@ -10,8 +10,9 @@
 #define MIN_PITCH_HZ 80
 #define MAX_PITCH_HZ 600
 #define MIN_SCORE 1
-#define MAX_SCORE 30
+#define MAX_SCORE 33
 #define MIN_VOLUME 300
+#define DELAY 50000
 
 // 볼륨(RMS) 계산 함수
 static double calculate_rms(short *buffer, int size) {
@@ -66,18 +67,17 @@ static int get_pitch_score(const char *note, int octave) {
     // 점수는 A2(1) ~ A5(37)
     static const char *score_notes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     int start_octave = 2;
-    int start_note = 9; // "A"의 index
+    int start_note = 6; // "F#"의 index
     int score = 1;
     int found = 0;
     for (int o = start_octave; o <= 5; ++o) {
         for (int n = 0; n < 12; ++n) {
-            if (o == start_octave && n < start_note) continue; // A2부터 시작
+            if (o == start_octave && n < start_note) continue;
             if (strcmp(note, score_notes[n]) == 0 && octave == o) {
                 found = 1;
                 break;
             }
             score++;
-            // A5(B5까지 포함, A5가 37점)
             if (o == 5 && n == start_note) break;
         }
         if (found) break;
@@ -87,7 +87,7 @@ static int get_pitch_score(const char *note, int octave) {
 }
 
 int main() {
-    const char *device = "plughw:4,0"; // 마이크 장치
+    const char *device = "plughw:2,0"; // 마이크 장치
     snd_pcm_t *pcm_handle;
     snd_pcm_hw_params_t *params;
     int pcm;
@@ -97,16 +97,7 @@ int main() {
     // ALSA PCM 캡처 장치 열기
     if ((pcm = snd_pcm_open(&pcm_handle, device, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
         fprintf(stderr, "ERROR: Cannot open PCM device %s: %s\n", device, snd_strerror(pcm));
-        // 마이크가 없을 때 기본값으로 동작
-        FILE *fp = fopen("/tmp/pitch_score", "w");
-        if (fp) {
-            fprintf(fp, "15 500.0\n");  // 중간 높이와 적절한 볼륨으로 설정
-            fclose(fp);
-        }
-        while (1) {
-            usleep(50000);  // 50ms 대기
-        }
-        return 0;
+        return 1;
     }
 
     // 하드웨어 파라미터 구조체 초기화
@@ -165,7 +156,7 @@ int main() {
         }
 
         // CPU 사용량 줄이기 위해 약간 쉬기
-        usleep(20000); // 20ms
+        usleep(DELAY);
     }
 
     snd_pcm_close(pcm_handle);
