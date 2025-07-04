@@ -832,7 +832,7 @@ void GameWindow::setCurrentPlayer(const QString &playerName)
     currentPlayerName = playerName;
 }
 
-GameWindow::~GameWindow() {
+
     // Clean up resources if needed
     // All child QObjects with 'this' as parent are deleted automatically,
     // but we ensure any manual allocations are cleaned up.
