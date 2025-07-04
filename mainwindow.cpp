@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QStyle>
 #include <QThread>
+#include <QPainter>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -31,7 +32,8 @@ MainWindow::MainWindow(QWidget *parent) :
     backgroundMusicProcess(nullptr), // 배경음악 프로세스 초기화
     volumeLevel(50),  // 볼륨 기본값 50%
     isCreatingGameWindow(false),
-    gameWindowCreationTimer(nullptr)
+    gameWindowCreationTimer(nullptr),
+    backgroundPixmap("/mnt/nfs/backgroundinit.png")
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
@@ -39,16 +41,35 @@ MainWindow::MainWindow(QWidget *parent) :
     // 오디오 초기화
     initAudio();
     
-    // 설정 버튼 크기 설정 (크기 일관성을 위해)
-    ui->settingsButton->setFixedSize(50, 50);  // 크기 증가
-    
     // Ranking 버튼 생성
     rankingButton = new QPushButton(this);
-    rankingButton->setFixedSize(50, 50);  // 설정 버튼과 동일한 크기로 증가
+    rankingButton->setFixedSize(70, 70);  // playerButton과 같은 크기로 변경
+    // trophy.png 아이콘을 rankingButton에 적용 (가운데 정렬)
+    QPixmap trophyPixmap("/mnt/nfs/trophy.png");
+    if (!trophyPixmap.isNull()) {
+        QIcon trophyIcon(trophyPixmap.scaled(70, 70, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        rankingButton->setIcon(trophyIcon);
+        rankingButton->setIconSize(QSize(70, 70));
+        rankingButton->setText("");
+    } else {
+        rankingButton->setIcon(QIcon());
+        rankingButton->setText("");
+    }
     
     // Player 버튼 생성
     playerButton = new QPushButton(this);
-    playerButton->setFixedSize(50, 50);  // 다른 버튼들과 동일한 크기
+    playerButton->setFixedSize(70, 70);
+    // playerset.png 아이콘을 playerButton에 적용 (가운데 정렬)
+    QPixmap playerPixmap("/mnt/nfs/playerset.png");
+    if (!playerPixmap.isNull()) {
+        QIcon playerIcon(playerPixmap.scaled(60, 60, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        playerButton->setIcon(playerIcon);
+        playerButton->setIconSize(QSize(60, 60));
+        playerButton->setText("");
+    } else {
+        playerButton->setIcon(QIcon());
+        playerButton->setText("");
+    }
     
     // 기본 버튼 스타일 설정
     QString buttonStyle = 
@@ -84,19 +105,12 @@ MainWindow::MainWindow(QWidget *parent) :
         "}";
     
     // 스타일 적용
-    ui->settingsButton->setStyleSheet(buttonStyle);  // 설정 버튼은 기본 스타일
     rankingButton->setStyleSheet(rankingStyle);      // 랭킹 버튼은 커스텀 스타일
     playerButton->setStyleSheet(playerStyle);        // 플레이어 버튼은 파란색 스타일
     
-    // 랭킹 버튼 설정 - 설정 버튼과 동일한 크기로 텍스트 설정
-    rankingButton->setText("R");  // R 텍스트 사용
-    rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 크기를 더 크게 조정
-    
-    // 플레이어 버튼 설정 - 사람 아이콘 사용
-    QStyle *style = QApplication::style();
-    QIcon personIcon = style->standardIcon(QStyle::SP_FileDialogDetailedView); // 사람 모양과 유사한 아이콘
-    playerButton->setIcon(personIcon);
-    playerButton->setIconSize(QSize(30, 30));
+    // 랭킹 버튼 설정 - 아이콘만 표시, 텍스트 제거
+    // rankingButton->setText("R");  // 텍스트 제거
+    // rankingButton->setFont(QFont("Arial", 22, QFont::Bold));  // 폰트 설정 제거
     
     // 현재 플레이어 표시 라벨 생성
     currentPlayerLabel = new QLabel(this);
@@ -124,7 +138,6 @@ MainWindow::MainWindow(QWidget *parent) :
     rankingButton->show();
     playerButton->show();
     updateButtonPositions();
-    ui->settingsButton->raise();  // 설정 버튼을 최상위로
     rankingButton->raise();       // 랭킹 버튼을 그 다음으로
     playerButton->raise();        // 플레이어 버튼을 그 다음으로
     
@@ -187,6 +200,7 @@ MainWindow::~MainWindow()
         settingsDialog = nullptr;
     }
     
+    // delete ui는 가장 마지막에 호출 (paintEvent 등에서 멤버 접근 방지)
     delete ui;
 }
 
@@ -383,24 +397,6 @@ void MainWindow::createSettingsDialog()
     layout->setSpacing(20);
 }
 
-void MainWindow::on_settingsButton_clicked()
-{
-    // 현재 화면의 중앙 위치 계산
-    QScreen *screen = QApplication::primaryScreen();
-    QRect screenGeometry = screen->geometry();
-    QPoint center = screenGeometry.center();
-    
-    // 다이얼로그를 화면 중앙에 위치시킴
-    QSize dialogSize = settingsDialog->size();
-    settingsDialog->move(center.x() - dialogSize.width()/2, 
-                        center.y() - dialogSize.height()/2);
-    
-    // 다이얼로그를 최상위로 표시하고 활성화
-    settingsDialog->raise();
-    settingsDialog->activateWindow();
-    settingsDialog->exec();
-}
-
 void MainWindow::onVolumeChanged(int value)
 {
     // 볼륨 레벨 저장
@@ -426,18 +422,10 @@ void MainWindow::on_menuButton1_clicked()
     // 기존 게임 윈도우가 있다면 안전하게 정리
     if (gameWindow) {
         qDebug() << "Cleaning up existing game window...";
-        
-        // 시그널 연결 해제
         gameWindow->disconnect();
-        
-        // 게임 윈도우 닫기
         gameWindow->close();
-        
-        // 메모리 정리 (deleteLater 대신 즉시 삭제)
-        delete gameWindow;
+        gameWindow->deleteLater();
         gameWindow = nullptr;
-        
-        // 잠시 대기하여 정리 완료 확인
         QApplication::processEvents();
     }
     
@@ -459,7 +447,7 @@ void MainWindow::on_menuButton1_clicked()
                 if (gameWindow) {
                     gameWindow->disconnect();
                     gameWindow->close();
-                    delete gameWindow;
+                    gameWindow->deleteLater();
                     gameWindow = nullptr;
                 }
                 showFullScreen();
@@ -467,7 +455,7 @@ void MainWindow::on_menuButton1_clicked()
                 activateWindow();
             });
             
-            // 게임 윈도우가 파괴될 때 정리
+            // 게임 윈도우가 파괴될 때 정리 (gameWindow 접근 금지, nullptr만 대입)
             connect(gameWindow, &GameWindow::destroyed, this, [this]() {
                 qDebug() << "Game window destroyed";
                 gameWindow = nullptr;
@@ -480,13 +468,13 @@ void MainWindow::on_menuButton1_clicked()
     } catch (const std::exception& e) {
         qDebug() << "Exception creating game window:" << e.what();
         if (gameWindow) {
-            delete gameWindow;
+            gameWindow->deleteLater();
             gameWindow = nullptr;
         }
     } catch (...) {
         qDebug() << "Unknown exception creating game window";
         if (gameWindow) {
-            delete gameWindow;
+            gameWindow->deleteLater();
             gameWindow = nullptr;
         }
     }
@@ -504,7 +492,7 @@ void MainWindow::cleanupGameWindow()
         gameWindow->hide();
         gameWindow->close();
         
-        // 메모리 정리
+        // deleteLater와 delete 혼용 방지, 즉시 삭제만 사용
         gameWindow->deleteLater();
         gameWindow = nullptr;
         
@@ -588,18 +576,10 @@ void MainWindow::on_menuButton2_clicked()
     // 기존 게임 윈도우가 있다면 안전하게 정리
     if (gameWindow) {
         qDebug() << "Cleaning up existing game window...";
-        
-        // 시그널 연결 해제
         gameWindow->disconnect();
-        
-        // 게임 윈도우 닫기
         gameWindow->close();
-        
-        // 메모리 정리 (deleteLater 대신 즉시 삭제)
-        delete gameWindow;
+        gameWindow->deleteLater();
         gameWindow = nullptr;
-        
-        // 잠시 대기하여 정리 완료 확인
         QApplication::processEvents();
     }
     
@@ -621,7 +601,7 @@ void MainWindow::on_menuButton2_clicked()
                 if (gameWindow) {
                     gameWindow->disconnect();
                     gameWindow->close();
-                    delete gameWindow;
+                    gameWindow->deleteLater();
                     gameWindow = nullptr;
                 }
                 showFullScreen();
@@ -642,13 +622,13 @@ void MainWindow::on_menuButton2_clicked()
     } catch (const std::exception& e) {
         qDebug() << "Exception creating game window:" << e.what();
         if (gameWindow) {
-            delete gameWindow;
+            gameWindow->deleteLater();
             gameWindow = nullptr;
         }
     } catch (...) {
         qDebug() << "Unknown exception creating game window";
         if (gameWindow) {
-            delete gameWindow;
+            gameWindow->deleteLater();
             gameWindow = nullptr;
         }
     }
@@ -684,6 +664,15 @@ void MainWindow::showRankingDialog()
     }
 }
 
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+    QMainWindow::paintEvent(event);
+    if (!backgroundPixmap.isNull()) {
+        QPainter painter(this);
+        painter.drawPixmap(rect(), backgroundPixmap.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+    }
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
@@ -692,35 +681,27 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 
 void MainWindow::updateButtonPositions()
 {
-    if (!rankingButton || !ui->settingsButton || !playerButton || !currentPlayerLabel) return;
+    if (!rankingButton || !playerButton || !currentPlayerLabel) return;
 
     // 버튼 크기와 여백 설정
     const int margin = 0;       // 여백 제거하여 최상단에 배치
-    const int buttonSize = 50;  // 버튼 크기 유지
+    const int buttonSize = playerButton->width();  // 두 버튼 모두 같은 크기(70)
     const int spacing = 10;     // 버튼 사이 간격
 
-    // 플레이어 버튼을 좌측 상단에 배치
+    // playerButton을 우측 상단에 배치
     playerButton->setGeometry(
-        margin,                 // x (좌측)
-        margin,                 // y (상단)
-        buttonSize,             // width
-        buttonSize              // height
+        width() - buttonSize - margin, // x (우측)
+        margin,                        // y (상단)
+        buttonSize,                    // width
+        buttonSize                     // height
     );
 
-    // 설정 버튼의 위치를 우측 상단으로 설정
-    ui->settingsButton->setGeometry(
-        width() - buttonSize - margin,  // x
-        margin,                         // y
-        buttonSize,                     // width
-        buttonSize                      // height
-    );
-    
-    // 랭킹 버튼을 설정 버튼 왼쪽에 배치 (간격 추가)
+    // rankingButton을 playerButton 왼쪽에 같은 크기로 배치
     rankingButton->setGeometry(
-        width() - (2 * buttonSize) - margin - spacing,  // x
-        margin,                                         // y
-        buttonSize,                                     // width
-        buttonSize                                      // height
+        width() - (2 * buttonSize) - margin - spacing, // x
+        margin,                                        // y
+        buttonSize,                                    // width
+        buttonSize                                     // height
     );
     
     // 현재 플레이어 라벨을 상단 중앙에 배치
@@ -735,7 +716,6 @@ void MainWindow::updateButtonPositions()
     
     // 버튼들을 부모 위젯의 스택 순서 최상위로 이동
     currentPlayerLabel->raise();             // 플레이어 라벨을 최상위로
-    ui->settingsButton->raise();             // 설정 버튼을 그 다음으로
     rankingButton->raise();                  // 랭킹 버튼을 그 다음으로
     playerButton->raise();                   // 플레이어 버튼을 그 다음으로
 }

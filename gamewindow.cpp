@@ -68,61 +68,81 @@ GameWindow::~GameWindow()
     
     // 타이머들 먼저 정지 및 정리
     if (gameTimer) {
+        qDebug() << "Deleting gameTimer...";
         gameTimer->stop();
         gameTimer->disconnect();
         gameTimer->deleteLater();
         gameTimer = nullptr;
+        qDebug() << "gameTimer deleted.";
     }
     if (obstacleTimer) {
+        qDebug() << "Deleting obstacleTimer...";
         obstacleTimer->stop();
         obstacleTimer->disconnect();
         obstacleTimer->deleteLater();
         obstacleTimer = nullptr;
+        qDebug() << "obstacleTimer deleted.";
     }
     if (pitchTimer) {
+        qDebug() << "Deleting pitchTimer...";
         pitchTimer->stop();
         pitchTimer->disconnect();
         pitchTimer->deleteLater();
         pitchTimer = nullptr;
+        qDebug() << "pitchTimer deleted.";
     }
     if (countdownTimer) {
+        qDebug() << "Deleting countdownTimer...";
         countdownTimer->stop();
         countdownTimer->disconnect();
         countdownTimer->deleteLater();
         countdownTimer = nullptr;
+        qDebug() << "countdownTimer deleted.";
     }
     if (broadcastTimer) {
+        qDebug() << "Deleting broadcastTimer...";
         broadcastTimer->stop();
         broadcastTimer->disconnect();
         broadcastTimer->deleteLater();
         broadcastTimer = nullptr;
+        qDebug() << "broadcastTimer deleted.";
     }
     if (cleanupTimer) {
+        qDebug() << "Deleting cleanupTimer...";
         cleanupTimer->stop();
         cleanupTimer->disconnect();
         cleanupTimer->deleteLater();
         cleanupTimer = nullptr;
+        qDebug() << "cleanupTimer deleted.";
     }
     
     // 멀티플레이어 정리
+    qDebug() << "Calling stopMultiplayer()...";
     stopMultiplayer();
+    qDebug() << "stopMultiplayer() finished.";
     
     // 마이크 프로세스 정리
+    qDebug() << "Calling stopMicProcess()...";
     stopMicProcess();
+    qDebug() << "stopMicProcess() finished.";
     
     // 사운드 프로세스 정리
     if (soundProcess) {
+        qDebug() << "Deleting soundProcess...";
         soundProcess->terminate();
         soundProcess->waitForFinished(1000);
         soundProcess->deleteLater();
         soundProcess = nullptr;
+        qDebug() << "soundProcess deleted.";
     }
     
     // 버튼 정리
     if (backButton) {
+        qDebug() << "Deleting backButton...";
         backButton->disconnect();
         backButton->deleteLater();
         backButton = nullptr;
+        qDebug() << "backButton deleted.";
     }
     
     // 이벤트 루프 처리
@@ -278,14 +298,18 @@ void GameWindow::startMicProcess()
 
 void GameWindow::stopMicProcess()
 {
+    qDebug() << "[stopMicProcess] called";
     if (micProcess) {
+        qDebug() << "[stopMicProcess] Deleting micProcess...";
         micProcess->terminate();
         if (!micProcess->waitForFinished(3000)) {
             micProcess->kill();
         }
         micProcess->deleteLater();
         micProcess = nullptr;
+        qDebug() << "[stopMicProcess] micProcess deleted.";
     }
+    qDebug() << "[stopMicProcess] finished";
 }
 
 void GameWindow::readPitchData()
@@ -867,6 +891,7 @@ void GameWindow::setCurrentPlayer(const QString &playerName)
     // (Most members are parented to 'this', so explicit deletion is not strictly necessary.)
     // If you add any new raw pointers, clean them up here.
 
+
 // 멀티플레이어 관련 함수들
 void GameWindow::startMultiplayer()
 {
@@ -934,38 +959,36 @@ void GameWindow::startMultiplayer()
 
 void GameWindow::stopMultiplayer()
 {
-    qDebug() << "Stopping multiplayer mode...";
-    
+    qDebug() << "[stopMultiplayer] called";
+    qDebug() << "[stopMultiplayer] isInLobby:" << isInLobby << ", isGameStarted:" << isGameStarted << ", isHost:" << isHost;
     // 멀티플레이어 상태 초기화
     isInLobby = false;
     isGameStarted = false;
     isHost = false;
     countdownValue = 0;
-    
     // 타이머들 정리
     if (broadcastTimer) {
+        qDebug() << "[stopMultiplayer] Deleting broadcastTimer...";
         broadcastTimer->stop();
         broadcastTimer->deleteLater();
         broadcastTimer = nullptr;
     }
-    
     if (cleanupTimer) {
+        qDebug() << "[stopMultiplayer] Deleting cleanupTimer...";
         cleanupTimer->stop();
         cleanupTimer->deleteLater();
         cleanupTimer = nullptr;
     }
-    
     // UDP 소켓 정리
     if (udpSocket) {
+        qDebug() << "[stopMultiplayer] Deleting udpSocket...";
         udpSocket->close();
         udpSocket->deleteLater();
         udpSocket = nullptr;
     }
-    
     // 플레이어 목록 정리
     otherPlayers.clear();
-    
-    qDebug() << "Multiplayer mode stopped";
+    qDebug() << "[stopMultiplayer] finished";
 }
 
 void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
