@@ -47,13 +47,6 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
-<<<<<<< HEAD
-    , targetY(0)
-{
-    qDebug() << "GameWindow constructor called";
-    // 초기화 과정에서 창이 보이지 않도록 숨김 (블랙화면 방지 위해 주석처리)
-    // hide();
-=======
     , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
@@ -61,7 +54,6 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
     
->>>>>>> bbc357fbcdb358c1b123e770237983dc7b119b7a
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
     QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
@@ -859,13 +851,7 @@ void GameWindow::goBackToMainWindow()
     // 게임 상태 정지
     gameRunning = false;
     
-    // 멀티플레이어 정리
-    stopMultiplayer();
-    
-    // 마이크 프로세스 정리
-    stopMicProcess();
-    
-    // 타이머들 정지
+    // 모든 타이머 정지
     if (gameTimer) {
         gameTimer->stop();
     }
@@ -879,10 +865,7 @@ void GameWindow::goBackToMainWindow()
         countdownTimer->stop();
     }
     
-    // 메인 윈도우로 돌아가라는 시그널 발생
-    emit requestMainWindow();
-    
-    // 게임 창 닫기
+    // 게임 창 닫기 (시그널 발생 없이)
     close();
 }
 
