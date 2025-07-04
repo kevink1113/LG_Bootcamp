@@ -14,6 +14,7 @@
 #include <QApplication>
 #include <QTimer>
 #include <QStyle>
+#include <QThread>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -26,11 +27,17 @@ MainWindow::MainWindow(QWidget *parent) :
     rankingDialog(nullptr),
     playerDialog(nullptr),
     currentPlayerLabel(nullptr),  // 현재 플레이어 라벨 초기화
+    backgroundMusicEnabled(true),  // 배경 음악 기본값은 켜기
+    backgroundMusicProcess(nullptr), // 배경음악 프로세스 초기화
+    volumeLevel(50),  // 볼륨 기본값 50%
     isCreatingGameWindow(false),
     gameWindowCreationTimer(nullptr)
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
+    
+    // 오디오 초기화
+    initAudio();
     
     // 설정 버튼 크기 설정 (크기 일관성을 위해)
     ui->settingsButton->setFixedSize(50, 50);  // 크기 증가
@@ -130,6 +137,13 @@ MainWindow::MainWindow(QWidget *parent) :
     
     // 초기 플레이어 표시 업데이트 (지연 실행으로 모든 UI가 준비된 후 실행)
     QTimer::singleShot(100, this, &MainWindow::updateCurrentPlayerDisplay);
+    
+    // 배경 음악이 활성화되어 있으면 시작
+    if (backgroundMusicEnabled) {
+        QTimer::singleShot(500, this, [this]() {
+            controlBackgroundMusicProcess(true);
+        });
+    }
 }
 
 MainWindow::~MainWindow()
@@ -139,6 +153,17 @@ MainWindow::~MainWindow()
         gameWindowCreationTimer->stop();
         gameWindowCreationTimer->deleteLater();
         gameWindowCreationTimer = nullptr;
+    }
+    
+    // 배경 음악 프로세스 정리
+    if (backgroundMusicProcess) {
+        backgroundMusicProcess->terminate();
+        backgroundMusicProcess->waitForFinished(1000);
+        delete backgroundMusicProcess;
+        backgroundMusicProcess = nullptr;
+        
+        // 실행 중인 aplay 프로세스 종료
+        QProcess::execute("killall", QStringList() << "-9" << "aplay");
     }
     
     // 게임 윈도우 정리
@@ -163,6 +188,19 @@ MainWindow::~MainWindow()
     }
     
     delete ui;
+}
+
+void MainWindow::initAudio()
+{
+    // 볼륨 기본값 설정
+    volumeLevel = 50;
+    
+    // 초기 배경 음악 시작
+    if (backgroundMusicEnabled) {
+        QTimer::singleShot(500, this, [this]() {
+            controlBackgroundMusicProcess(true);
+        });
+    }
 }
 
 void MainWindow::createSettingsDialog()
@@ -190,42 +228,82 @@ void MainWindow::createSettingsDialog()
     titleLayout->setContentsMargins(0, 0, 0, 20);  // 아래쪽 여백 추가
     
     QLabel *titleLabel = new QLabel("Settings", titleContainer);
-    titleLabel->setStyleSheet("QLabel { font-size: 24pt; font-weight: bold; color: #2c3e50; }");
+    titleLabel->setStyleSheet("QLabel { font-size: 28pt; font-weight: bold; color: #2c3e50; }");  // 폰트 크기 키움
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();  // 오른쪽 여백을 위한 stretch 추가
     
     layout->addWidget(titleContainer);
 
-    QCheckBox *bgmCheckBox = new QCheckBox("Background Music", settingsDialog);
-    bgmCheckBox->setStyleSheet(R"(
-        QCheckBox {
-            font-size: 12pt;
-            color: #2c3e50;
-            margin-top: 15px;
-        }
-        QCheckBox::indicator {
-            width: 20px;
-            height: 20px;
-        }
-        QCheckBox::indicator:unchecked {
-            border: 2px solid #2c3e50;
-            background-color: #ffffff;
-            border-radius: 4px;
-        }
-        QCheckBox::indicator:checked {
-            border: 2px solid #2c3e50;
-            background-color: #3498db;
-            border-radius: 4px;
-        }
-        QCheckBox::indicator:checked:hover {
-            background-color: #2980b9;
-        }
-    )");
-    bgmCheckBox->setChecked(true);  // 기본값은 ON으로 설정
-    layout->addWidget(bgmCheckBox);
+    // 배경 음악 설정을 위한 레이아웃
+    QWidget *bgmContainer = new QWidget(settingsDialog);
+    QHBoxLayout *bgmLayout = new QHBoxLayout(bgmContainer);
+    bgmLayout->setContentsMargins(0, 0, 0, 0);
 
+    // 배경 음악 라벨
+    QLabel *bgmLabel = new QLabel("Background Music:", settingsDialog);
+    bgmLabel->setStyleSheet("font-size: 16pt; color: #2c3e50;");
+    bgmLayout->addWidget(bgmLabel);
+
+    // ON/OFF 버튼
+    QPushButton *bgmToggleButton = new QPushButton(backgroundMusicEnabled ? "ON" : "OFF", settingsDialog);
+    bgmToggleButton->setFixedWidth(100);
+    bgmToggleButton->setStyleSheet(QString(R"(
+        QPushButton {
+            font-size: 16pt;
+            font-weight: bold;
+            padding: 5px;
+            border-radius: 8px;
+            background-color: %1;
+            color: white;
+        }
+        QPushButton:hover {
+            background-color: %2;
+        }
+        QPushButton:pressed {
+            background-color: %3;
+        }
+    )").arg(backgroundMusicEnabled ? "#27ae60" : "#e74c3c",  // 켜져 있으면 초록색, 꺼져 있으면 빨간색
+           backgroundMusicEnabled ? "#219653" : "#c0392b",  // 호버 색상
+           backgroundMusicEnabled ? "#1e8449" : "#a93226")); // 눌렸을 때 색상
+
+    bgmLayout->addWidget(bgmToggleButton);
+    bgmLayout->addStretch();  // 오른쪽 공간 채우기
+    
+    layout->addWidget(bgmContainer);
+    
+    // 버튼 클릭 시 배경 음악 상태 토글
+    connect(bgmToggleButton, &QPushButton::clicked, this, [this, bgmToggleButton]() {
+        backgroundMusicEnabled = !backgroundMusicEnabled;
+        
+        // 버튼 텍스트 및 스타일 업데이트
+        bgmToggleButton->setText(backgroundMusicEnabled ? "ON" : "OFF");
+        bgmToggleButton->setStyleSheet(QString(R"(
+            QPushButton {
+                font-size: 16pt;
+                font-weight: bold;
+                padding: 5px;
+                border-radius: 8px;
+                background-color: %1;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: %2;
+            }
+            QPushButton:pressed {
+                background-color: %3;
+            }
+        )").arg(backgroundMusicEnabled ? "#27ae60" : "#e74c3c",  // 켜져 있으면 초록색, 꺼져 있으면 빨간색
+               backgroundMusicEnabled ? "#219653" : "#c0392b",  // 호버 색상
+               backgroundMusicEnabled ? "#1e8449" : "#a93226")); // 눌렸을 때 색상
+        
+        // 실제 배경 음악 제어 코드 실행
+        controlBackgroundMusicProcess(backgroundMusicEnabled);
+        qDebug() << "Background music:" << (backgroundMusicEnabled ? "ON" : "OFF");
+    });
+
+    // 볼륨 라벨 및 슬라이더
     QLabel *volumeLabel = new QLabel("Volume", settingsDialog);
-    volumeLabel->setStyleSheet("QLabel { font-size: 12pt; color: #2c3e50; margin-top: 15px; }");
+    volumeLabel->setStyleSheet("QLabel { font-size: 16pt; color: #2c3e50; margin-top: 15px; }");  // 폰트 크기 증가
     layout->addWidget(volumeLabel);
 
     volumeSlider = new QSlider(Qt::Horizontal, settingsDialog);
@@ -235,18 +313,18 @@ void MainWindow::createSettingsDialog()
     volumeSlider->setStyleSheet(R"(
         QSlider::groove:horizontal {
             border: 1px solid #999999;
-            height: 10px;
+            height: 12px;  /* 슬라이더 높이 증가 */
             background: #ffffff;
             margin: 2px 0;
-            border-radius: 5px;
+            border-radius: 6px;
         }
         QSlider::handle:horizontal {
             background: #3498db;
             border: 2px solid #2980b9;
-            width: 18px;
-            height: 18px;
-            margin: -5px 0;
-            border-radius: 10px;
+            width: 24px;  /* 핸들 크기 증가 */
+            height: 24px;
+            margin: -6px 0;
+            border-radius: 12px;
         }
         QSlider::handle:horizontal:hover {
             background: #2980b9;
@@ -262,17 +340,18 @@ void MainWindow::createSettingsDialog()
     buttonBox->button(QDialogButtonBox::Ok)->setText("OK");
     buttonBox->button(QDialogButtonBox::Cancel)->setText("Cancel");
     
-    // 버튼 스타일 설정
+    // 버튼 스타일 설정 - 크기 증가
     buttonBox->setStyleSheet(R"(
         QPushButton {
-            min-width: 80px;
-            min-height: 30px;
-            padding: 5px;
+            min-width: 100px;  /* 버튼 너비 증가 */
+            min-height: 40px;  /* 버튼 높이 증가 */
+            padding: 8px;
             background-color: #3498db;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             color: white;
             font-weight: bold;
+            font-size: 14pt;  /* 폰트 크기 증가 */
         }
         QPushButton:hover {
             background-color: #2980b9;
@@ -324,6 +403,10 @@ void MainWindow::on_settingsButton_clicked()
 
 void MainWindow::onVolumeChanged(int value)
 {
+    // 볼륨 레벨 저장
+    volumeLevel = value;
+    
+    // 시스템 볼륨도 함께 조절 (선택적)
 #ifdef Q_OS_WIN
     // Windows 시스템에서의 볼륨 제어
     QString command = QString("powershell -c \"$volume = New-Object -ComObject WScript.Shell; $volume.SendKeys([char]0xAF); [System.Math]::Round(%1 * 65535 / 100)\"").arg(value);
@@ -403,6 +486,13 @@ void MainWindow::createNewGameWindow()
             isCreatingGameWindow = false;
             return;
         }
+        
+        // 현재 플레이어 이름을 게임 윈도우에 설정
+        QString currentPlayer = "";
+        if (playerDialog) {
+            currentPlayer = playerDialog->getCurrentPlayer();
+        }
+        gameWindow->setCurrentPlayer(currentPlayer);
         
         // 게임 윈도우가 닫힐 때의 정리 연결
         connect(gameWindow, &GameWindow::destroyed, this, [this]() {
@@ -609,6 +699,50 @@ void MainWindow::updateCurrentPlayerDisplay()
     
     // 라벨 크기가 변경되었을 수 있으므로 위치 재조정
     updateButtonPositions();
+}
+
+// 리눅스 명령어로 배경 음악 프로세스 제어
+void MainWindow::controlBackgroundMusicProcess(bool start)
+{
+    qDebug() << "Background music control:" << (start ? "START" : "STOP");
+
+    // 기존 프로세스 종료
+    if (backgroundMusicProcess != nullptr) {
+        qDebug() << "Terminating existing background music process...";
+        backgroundMusicProcess->terminate();
+        backgroundMusicProcess->waitForFinished(1000);
+        delete backgroundMusicProcess;
+        backgroundMusicProcess = nullptr;
+        QProcess::execute("killall", QStringList() << "-9" << "aplay");
+        qDebug() << "Background music process terminated.";
+    }
+
+    if (start) {
+        qDebug() << "Starting background music...";
+        backgroundMusicProcess = new QProcess(this);
+        backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+        
+        if (backgroundMusicProcess->waitForStarted(1000)) {
+            qDebug() << "Background music started with aplay.";
+        } else {
+            qDebug() << "Failed to start background music. Trying absolute path...";
+            delete backgroundMusicProcess;
+            
+            // 절대 경로로 시도
+            backgroundMusicProcess = new QProcess(this);
+            backgroundMusicProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+            
+            if (backgroundMusicProcess->waitForStarted(1000)) {
+                qDebug() << "Background music started with absolute path aplay.";
+            } else {
+                qDebug() << "Failed to start background music:" << backgroundMusicProcess->errorString();
+                delete backgroundMusicProcess;
+                backgroundMusicProcess = nullptr;
+            }
+        }
+    } else {
+        qDebug() << "Background music disabled.";
+    }
 }
 
 

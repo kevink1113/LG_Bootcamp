@@ -13,7 +13,7 @@ class GameOverDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit GameOverDialog(int score, QWidget *parent = nullptr);
+    explicit GameOverDialog(int score, const QString &playerName = "", QWidget *parent = nullptr);
 
 signals:
     void mainMenuRequested();
@@ -24,10 +24,11 @@ private slots:
     void onRankingButtonClicked();
 
 private:
-    void setupUI(int score);
+    void setupUI(int score, const QString &playerName);
     
     int currentScore;  // 현재 점수 저장
     bool scoreAdded;   // 점수가 이미 추가되었는지 확인하는 플래그
+    QLabel *playerLabel;  // 플레이어 이름 표시 라벨 추가
     QLabel *scoreLabel;
     QPushButton *mainButton;
     QPushButton *rankingButton;
