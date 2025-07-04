@@ -66,26 +66,42 @@ GameWindow::~GameWindow()
     // 게임 상태 정지
     gameRunning = false;
     
-    // 타이머들 먼저 정지
+    // 타이머들 먼저 정지 및 정리
     if (gameTimer) {
         gameTimer->stop();
+        gameTimer->disconnect();
         gameTimer->deleteLater();
         gameTimer = nullptr;
     }
     if (obstacleTimer) {
         obstacleTimer->stop();
+        obstacleTimer->disconnect();
         obstacleTimer->deleteLater();
         obstacleTimer = nullptr;
     }
     if (pitchTimer) {
         pitchTimer->stop();
+        pitchTimer->disconnect();
         pitchTimer->deleteLater();
         pitchTimer = nullptr;
     }
     if (countdownTimer) {
         countdownTimer->stop();
+        countdownTimer->disconnect();
         countdownTimer->deleteLater();
         countdownTimer = nullptr;
+    }
+    if (broadcastTimer) {
+        broadcastTimer->stop();
+        broadcastTimer->disconnect();
+        broadcastTimer->deleteLater();
+        broadcastTimer = nullptr;
+    }
+    if (cleanupTimer) {
+        cleanupTimer->stop();
+        cleanupTimer->disconnect();
+        cleanupTimer->deleteLater();
+        cleanupTimer = nullptr;
     }
     
     // 멀티플레이어 정리
@@ -94,11 +110,23 @@ GameWindow::~GameWindow()
     // 마이크 프로세스 정리
     stopMicProcess();
     
+    // 사운드 프로세스 정리
+    if (soundProcess) {
+        soundProcess->terminate();
+        soundProcess->waitForFinished(1000);
+        soundProcess->deleteLater();
+        soundProcess = nullptr;
+    }
+    
     // 버튼 정리
     if (backButton) {
+        backButton->disconnect();
         backButton->deleteLater();
         backButton = nullptr;
     }
+    
+    // 이벤트 루프 처리
+    QApplication::processEvents();
     
     qDebug() << "GameWindow destructor completed";
 }
@@ -832,7 +860,7 @@ void GameWindow::setCurrentPlayer(const QString &playerName)
     currentPlayerName = playerName;
 }
 
-GameWindow::~GameWindow() {
+//GameWindow::~GameWindow() {
     // Clean up resources if needed
     // All child QObjects with 'this' as parent are deleted automatically,
     // but we ensure any manual allocations are cleaned up.
