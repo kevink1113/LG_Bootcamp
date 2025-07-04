@@ -47,21 +47,13 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
-<<<<<<< HEAD
-    , targetY(0)
-{
-    qDebug() << "GameWindow constructor called";
-    // 초기화 과정에서 창이 보이지 않도록 숨김 (블랙화면 방지 위해 주석처리)
-    // hide();
-=======
     , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
     
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
-    
->>>>>>> bbc357fbcdb358c1b123e770237983dc7b119b7a
+
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
     QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
@@ -70,44 +62,59 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
 GameWindow::~GameWindow()
 {
     qDebug() << "GameWindow destructor called";
-    
-    // 게임 상태 정지
     gameRunning = false;
-    
-    // 타이머들 먼저 정지
-    if (gameTimer) {
-        gameTimer->stop();
-        gameTimer->deleteLater();
-        gameTimer = nullptr;
+    try {
+        // 타이머 안전 정리
+        auto safeDeleteTimer = [](QTimer*& timer) {
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+                timer = nullptr;
+            }
+        };
+        safeDeleteTimer(gameTimer);
+        safeDeleteTimer(obstacleTimer);
+        safeDeleteTimer(pitchTimer);
+        safeDeleteTimer(countdownTimer);
+        safeDeleteTimer(broadcastTimer);
+        safeDeleteTimer(cleanupTimer);
+
+        // 멀티플레이어 정리 (stopMultiplayer 내부에서 deleteLater 중복 호출 안 하도록 주의)
+        if (udpSocket || broadcastTimer || cleanupTimer || !otherPlayers.isEmpty()) {
+            stopMultiplayer();
+        }
+
+        // 마이크 프로세스 안전 정리
+        if (micProcess) {
+            if (micProcess->state() != QProcess::NotRunning) {
+                micProcess->terminate();
+                if (!micProcess->waitForFinished(2000)) {
+                    micProcess->kill();
+                    micProcess->waitForFinished(1000);
+                }
+            }
+            micProcess->deleteLater();
+            micProcess = nullptr;
+        }
+
+        // 사운드 프로세스 안전 정리
+        if (soundProcess) {
+            if (soundProcess->state() != QProcess::NotRunning) {
+                soundProcess->terminate();
+                soundProcess->waitForFinished(1000);
+            }
+            soundProcess->deleteLater();
+            soundProcess = nullptr;
+        }
+
+        // 버튼 안전 정리
+        if (backButton) {
+            backButton->deleteLater();
+            backButton = nullptr;
+        }
+    } catch (...) {
+        qDebug() << "Exception in GameWindow destructor (ignored)";
     }
-    if (obstacleTimer) {
-        obstacleTimer->stop();
-        obstacleTimer->deleteLater();
-        obstacleTimer = nullptr;
-    }
-    if (pitchTimer) {
-        pitchTimer->stop();
-        pitchTimer->deleteLater();
-        pitchTimer = nullptr;
-    }
-    if (countdownTimer) {
-        countdownTimer->stop();
-        countdownTimer->deleteLater();
-        countdownTimer = nullptr;
-    }
-    
-    // 멀티플레이어 정리
-    stopMultiplayer();
-    
-    // 마이크 프로세스 정리
-    stopMicProcess();
-    
-    // 버튼 정리
-    if (backButton) {
-        backButton->deleteLater();
-        backButton = nullptr;
-    }
-    
     qDebug() << "GameWindow destructor completed";
 }
 
@@ -591,8 +598,7 @@ void GameWindow::updateGame()
         }
     }
     
-<<<<<<< HEAD
-=======
+
     // 멀티플레이어 모드에서 네트워크 업데이트
     if (isMultiplayerMode) {
         updatePlayerPosition(player.x(), player.y(), score, false);
@@ -606,7 +612,6 @@ void GameWindow::updateGame()
     }
     
     // 화면 갱신
->>>>>>> bbc357fbcdb358c1b123e770237983dc7b119b7a
     update();
 }
 
@@ -866,7 +871,7 @@ void GameWindow::setCurrentPlayer(const QString &playerName)
     currentPlayerName = playerName;
 }
 
-GameWindow::~GameWindow() {
+
     // Clean up resources if needed
     // All child QObjects with 'this' as parent are deleted automatically,
     // but we ensure any manual allocations are cleaned up.

@@ -157,10 +157,6 @@ private:
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
 
-    static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
-
-    QPixmap playerImage; // 플레이어 이미지
-
     static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
     static const int WINDOW_WIDTH = 800;  // 윈도우 너비
     static const int WINDOW_HEIGHT = 600;  // 윈도우 높이
@@ -172,6 +168,7 @@ private:
     static const int PLAYER_TIMEOUT = 3000; // 3초
     static const quint32 FIXED_SEED = 0xDEADBEEF; // 더 복잡한 고정된 랜덤 시드값
 
+    QPixmap playerImage; // 플레이어 이미지
 };
 
 #endif // GAMEWINDOW_H

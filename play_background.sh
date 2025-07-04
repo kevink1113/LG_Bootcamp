@@ -1,6 +1,5 @@
 #!/bin/sh
-# Background music playback script
-# This script loops infinitely to play the background music
+# Background music playback script (improved)
 # Make executable with: chmod +x play_background.sh
 
 # Define variables
@@ -27,17 +26,23 @@ sleep 1
 trap "" HUP  # Ignore hangup signal
 
 # Print some debugging info
-echo "Starting background music playback script"
-echo "Audio file: $AUDIO_FILE"
-echo "Audio device: $DEVICE"
+echo "[BGM] Starting background music playback..."
+echo "[BGM] File: $AUDIO_FILE, Device: $DEVICE"
 
 # Infinite loop to continuously play the audio file
 while true; do
-    echo "Playing audio file..."
+    if [ ! -f "$AUDIO_FILE" ]; then
+        echo "[BGM] File not found: $AUDIO_FILE. Retrying in 5s..."
+        sleep 5
+        continue
+    fi
+    echo "[BGM] Playing..."
     # Play the audio file
-    aplay -D$DEVICE $AUDIO_FILE
-    
-    # If aplay exits with error, wait before retrying to avoid CPU spinning
-    echo "Audio playback ended, restarting in 2 seconds..."
+    aplay -D$DEVICE "$AUDIO_FILE" 
+    if [ $? -ne 0 ]; then
+        echo "[BGM] aplay failed, trying default device..."
+        aplay "$AUDIO_FILE"
+    fi
+    echo "[BGM] Playback ended, restarting in 2s..."
     sleep 2
 done
