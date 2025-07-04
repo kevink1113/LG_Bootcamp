@@ -47,6 +47,13 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
+<<<<<<< HEAD
+    , targetY(0)
+{
+    qDebug() << "GameWindow constructor called";
+    // 초기화 과정에서 창이 보이지 않도록 숨김 (블랙화면 방지 위해 주석처리)
+    // hide();
+=======
     , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
@@ -54,6 +61,7 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
     
+>>>>>>> bbc357fbcdb358c1b123e770237983dc7b119b7a
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
     QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
@@ -66,26 +74,42 @@ GameWindow::~GameWindow()
     // 게임 상태 정지
     gameRunning = false;
     
-    // 타이머들 먼저 정지
+    // 타이머들 먼저 정지 및 정리
     if (gameTimer) {
         gameTimer->stop();
+        gameTimer->disconnect();
         gameTimer->deleteLater();
         gameTimer = nullptr;
     }
     if (obstacleTimer) {
         obstacleTimer->stop();
+        obstacleTimer->disconnect();
         obstacleTimer->deleteLater();
         obstacleTimer = nullptr;
     }
     if (pitchTimer) {
         pitchTimer->stop();
+        pitchTimer->disconnect();
         pitchTimer->deleteLater();
         pitchTimer = nullptr;
     }
     if (countdownTimer) {
         countdownTimer->stop();
+        countdownTimer->disconnect();
         countdownTimer->deleteLater();
         countdownTimer = nullptr;
+    }
+    if (broadcastTimer) {
+        broadcastTimer->stop();
+        broadcastTimer->disconnect();
+        broadcastTimer->deleteLater();
+        broadcastTimer = nullptr;
+    }
+    if (cleanupTimer) {
+        cleanupTimer->stop();
+        cleanupTimer->disconnect();
+        cleanupTimer->deleteLater();
+        cleanupTimer = nullptr;
     }
     
     // 멀티플레이어 정리
@@ -94,11 +118,23 @@ GameWindow::~GameWindow()
     // 마이크 프로세스 정리
     stopMicProcess();
     
+    // 사운드 프로세스 정리
+    if (soundProcess) {
+        soundProcess->terminate();
+        soundProcess->waitForFinished(1000);
+        soundProcess->deleteLater();
+        soundProcess = nullptr;
+    }
+    
     // 버튼 정리
     if (backButton) {
+        backButton->disconnect();
         backButton->deleteLater();
         backButton = nullptr;
     }
+    
+    // 이벤트 루프 처리
+    QApplication::processEvents();
     
     qDebug() << "GameWindow destructor completed";
 }
@@ -107,14 +143,23 @@ GameWindow::~GameWindow()
 void GameWindow::setupGame()
 {
     qDebug() << "Setting up game window...";
+    // 1. 전체화면/geometry/flags를 show() 전에 설정
     QScreen *screen = QApplication::primaryScreen();
+    if (!screen) {
+        qDebug() << "No primary screen found!";
+        return;
+    }
     QRect screenGeometry = screen->geometry();
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setGeometry(screenGeometry);
     setWindowState(Qt::WindowFullScreen);
+    // 2. show()는 마지막에 호출
     show();
+    QCoreApplication::processEvents(); // 즉시 화면 갱신
+    // 3. raise/activateWindow는 show() 이후
     raise();
     activateWindow();
+    qDebug() << "GameWindow shown. Size:" << size();
     player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
     targetY = height()/2 - PLAYER_SIZE/2;
     
@@ -301,13 +346,18 @@ void GameWindow::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    // 배경 그리기 (이미지 최적화 예시)
+    painter.setRenderHint(QPainter::Antialiasing, false); // 성능: 안티앨리어싱 OFF
+    // 배경 그리기 (이미지 최적화)
     static QPixmap bgPixmap;
-    if (bgPixmap.isNull()) {
-        bgPixmap.load("/mnt/nfs/background.png");
-        if (!bgPixmap.isNull())
-            bgPixmap = bgPixmap.scaled(size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    static QSize lastBgSize;
+    if (bgPixmap.isNull() || lastBgSize != size()) {
+        QPixmap rawBg;
+        if (rawBg.load("/mnt/nfs/background.png")) {
+            bgPixmap = rawBg.scaled(size(), Qt::IgnoreAspectRatio, Qt::FastTransformation); // 성능: FastTransformation
+            lastBgSize = size();
+        } else {
+            bgPixmap = QPixmap();
+        }
     }
     if (!bgPixmap.isNull()) {
         painter.drawPixmap(rect(), bgPixmap);
@@ -349,23 +399,49 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.restore();
     }
     
-    // 장애물 그리기 (상단/하단 이미지로 대체)
-    static QPixmap obstacleTopPixmap, obstacleBottomPixmap;
-    if (obstacleTopPixmap.isNull())
-        obstacleTopPixmap.load("/mnt/nfs/obstacle_top.png");
-    if (obstacleBottomPixmap.isNull())
-        obstacleBottomPixmap.load("/mnt/nfs/obstacle_bottom.png");
+    // 장애물 그리기 (brick_pillar.png의 중앙 기둥 부분만 세로만 스케일, 가로는 원본 비율)
+    static QPixmap pillarPixmap;
+    static QMap<int, QPixmap> pillarVCache; // height별 캐시
+    static int lastMaxPillarHeight = 0;
+    static QPixmap croppedPillar;
+    if (pillarPixmap.isNull())
+        pillarPixmap.load("/mnt/nfs/brick_pillar.png");
+    const int REAL_PILLAR_WIDTH = 60;
+    // 1. 현재 장애물 중 가장 높은 높이 계산 (장애물 없으면 0)
+    int maxPillarHeight = 0;
+    for (const QRect &obstacle : obstacles) {
+        if (obstacle.height() > maxPillarHeight)
+            maxPillarHeight = obstacle.height();
+    }
+    // 2. 가장 높은 기둥 높이가 바뀌었을 때만 크롭 (불필요한 연산 방지)
+    if (!pillarPixmap.isNull() && maxPillarHeight > 0 && maxPillarHeight != lastMaxPillarHeight) {
+        int imgW = pillarPixmap.width();
+        int imgH = pillarPixmap.height();
+        int srcX = (imgW - REAL_PILLAR_WIDTH) / 2;
+        int cropH = qMin(maxPillarHeight, imgH); // 이미지보다 높으면 이미지 끝까지만
+        croppedPillar = pillarPixmap.copy(srcX, 0, REAL_PILLAR_WIDTH, cropH);
+        pillarVCache.clear(); // 높이별 캐시도 무효화
+        lastMaxPillarHeight = maxPillarHeight;
+    }
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
-        // 상단 장애물: y==0, 하단 장애물: y>0
-        if (obstacle.y() == 0 && !obstacleTopPixmap.isNull()) {
-            painter.drawPixmap(obstacle, obstacleTopPixmap);
-        } else if (obstacle.y() > 0 && !obstacleBottomPixmap.isNull()) {
-            painter.drawPixmap(obstacle, obstacleBottomPixmap);
+        int h = obstacle.height();
+        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        int y = obstacle.y();
+        if (!croppedPillar.isNull()) {
+            QPixmap scaled;
+            if (pillarVCache.contains(h)) {
+                scaled = pillarVCache.value(h);
+            } else {
+                // 3. 크롭된 이미지를 각 기둥 높이에 맞게 세로로만 스케일
+                scaled = croppedPillar.scaled(REAL_PILLAR_WIDTH, h, Qt::IgnoreAspectRatio, Qt::FastTransformation); // FastTransformation로 성능 향상
+                pillarVCache.insert(h, scaled);
+            }
+            painter.drawPixmap(x, y, REAL_PILLAR_WIDTH, h, scaled);
         } else {
             painter.setBrush(Qt::red);
             painter.setPen(Qt::NoPen);
-            painter.drawRect(obstacle);
+            painter.drawRect(x, y, REAL_PILLAR_WIDTH, h);
         }
     }
     
@@ -476,16 +552,15 @@ void GameWindow::updateGame()
     if (isMultiplayerMode && !isGameStarted) return;
     
     // 마이크 입력에 따른 플레이어 이동
-    if (currentVolume > 0.1f) { // 볼륨이 일정 이상일 때만
+    if (currentVolume > 0.1f) {
         int currentY = player.y();
-        if (currentY < targetY) {
-            player.translate(0, qMin(playerSpeed, targetY - currentY));
-        } else if (currentY > targetY) {
-            player.translate(0, -qMin(playerSpeed, currentY - targetY));
+        int dy = targetY - currentY;
+        if (qAbs(dy) > 0) {
+            player.translate(0, qBound(-playerSpeed, dy, playerSpeed));
         }
     }
     
-    // 키보드 입력도 여전히 지원 (디버깅용)
+    // 키보드 입력
     if (moveUp && player.y() > 0) {
         player.translate(0, -playerSpeed);
     }
@@ -493,50 +568,37 @@ void GameWindow::updateGame()
         player.translate(0, playerSpeed);
     }
     
-    // 장애물 이동 및 제거 - 성능 최적화
+    // 장애물 이동 및 제거 (역순 루프, reserve)
     const int leftBoundary = 0;
     const int obstacleSpeed = 3;
-    
     for (int i = obstacles.size() - 1; i >= 0; --i) {
         QRect &obstacle = obstacles[i];
-        obstacle.translate(-obstacleSpeed, 0); // 장애물이 왼쪽으로 이동
-        
-        // 화면 밖으로 나간 장애물 제거
+        obstacle.translate(-obstacleSpeed, 0);
         if (obstacle.x() + obstacle.width() < leftBoundary) {
             obstacles.removeAt(i);
             score++;
         }
     }
     
-    // 별 이동 및 충돌 검사 최적화
+    // 별 이동 및 충돌 검사 (역순 루프, reserve)
     const QRectF playerBounds(player.x() - 15, player.y() - 15, player.width() + 30, player.height() + 30);
     const int halfStarSize = starSize / 2;
-    const int starSpeed = 3; // 장애물과 동일한 속도
-    
+    const int starSpeed = 3;
     for (int i = stars.size() - 1; i >= 0; --i) {
         Star &star = stars[i];
         if (!star.active) continue;
-        
-        // 화면 밖으로 나간 별은 즉시 비활성화
         if (star.pos.x() + halfStarSize < leftBoundary) {
             star.active = false;
             continue;
         }
-        
         star.pos.setX(star.pos.x() - starSpeed);
-        
-        // 충돌 검사 최적화: 대략적인 거리 체크 먼저 (빠른 거부)
         const qreal dx = qAbs(star.pos.x() - player.x());
         const qreal dy = qAbs(star.pos.y() - player.y());
-        if (dx > starSize || dy > starSize) continue;  // 충돌 불가능
-        
-        // 정확한 충돌 검사
+        if (dx > starSize || dy > starSize) continue;
         QRectF starRect(star.pos.x() - halfStarSize, star.pos.y() - halfStarSize, starSize, starSize);
         if (playerBounds.intersects(starRect)) {
             star.active = false;
-            score += 3;  // 별 획득 시 3점 추가
-            
-            // 별 획득 사운드 재생 - QProcess 재사용 패턴
+            score += 3;
             playSound("/mnt/nfs/wav/item.wav");
         }
     }
@@ -547,8 +609,8 @@ void GameWindow::updateGame()
         return;
     }
     
-    // 비활성 별 정리 (필요할 때만 처리)
-    const int MAX_STARS = 25;  // 최대 별 개수
+    // 비활성 별 정리 (reserve)
+    const int MAX_STARS = 25;
     if (stars.size() > MAX_STARS) {
         for (int i = stars.size() - 1; i >= 0; --i) {
             if (!stars[i].active) {
@@ -557,6 +619,7 @@ void GameWindow::updateGame()
         }
     }
     
+
     // 멀티플레이어 모드에서 네트워크 업데이트
     if (isMultiplayerMode) {
         updatePlayerPosition(player.x(), player.y(), score, false);
@@ -734,29 +797,26 @@ void GameWindow::setupBackButton()
     backButton = new QPushButton(this);
     backButton->setFixedSize(50, 50);
     backButton->move(10, 10);
-    
-    // 스타일 설정
+    // 완전 투명 배경, 그림자/테두리 없음
     QString buttonStyle = 
         "QPushButton {"
-        "   background-color: rgba(255, 255, 255, 180);"
+        "   background-color: transparent;"
         "   border: none;"
-        "   border-radius: 10px;"
-        "   padding: 5px;"
+        "   border-radius: 0px;"
+        "   padding: 0px;"
         "}"
         "QPushButton:hover {"
-        "   background-color: rgba(255, 255, 255, 220);"
+        "   background-color: rgba(255,255,255,40);"
         "}"
         "QPushButton:pressed {"
-        "   background-color: rgba(200, 200, 200, 220);"
+        "   background-color: rgba(0,0,0,30);"
         "}";
     backButton->setStyleSheet(buttonStyle);
-    
-    // 뒤로가기 아이콘 설정
+    // 아이콘 크게 (40x40)
     QStyle *style = QApplication::style();
     QIcon backIcon = style->standardIcon(QStyle::SP_ArrowBack);
     backButton->setIcon(backIcon);
-    backButton->setIconSize(QSize(30, 30));
-    
+    backButton->setIconSize(QSize(40, 40));
     connect(backButton, &QPushButton::clicked, this, &GameWindow::goBackToMainWindow);
     backButton->show();
     backButton->raise();
