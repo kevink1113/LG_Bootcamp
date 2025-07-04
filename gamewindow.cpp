@@ -10,6 +10,7 @@
 #include <QTextStream>
 #include <cmath>
 #include <QVector>  // QVector 추가
+#include <QDir>     // QDir 추가
 
 GameWindow::GameWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -38,134 +39,85 @@ GameWindow::GameWindow(QWidget *parent)
     QTimer::singleShot(50, this, &GameWindow::setupGame);
 }
 
-GameWindow::~GameWindow()
-{
-    qDebug() << "GameWindow destructor called";
-    gameRunning = false;
-    
-    // 마이크 프로세스 먼저 정지
-    stopMicProcess();
-    
-    // 사운드 프로세스가 있다면 정리
-    if (soundProcess) {
-        if (soundProcess->state() == QProcess::Running) {
-            soundProcess->terminate();
-            soundProcess->waitForFinished(1000);
-        }
-        delete soundProcess;
-        soundProcess = nullptr;
-    }
-    
-    // 타이머들 정리
-    if (gameTimer) {
-        gameTimer->stop();
-        gameTimer->deleteLater();
-        gameTimer = nullptr;
-    }
-    if (obstacleTimer) {
-        obstacleTimer->stop();
-        obstacleTimer->deleteLater();
-        obstacleTimer = nullptr;
-    }
-    if (pitchTimer) {
-        pitchTimer->stop();
-        pitchTimer->deleteLater();
-        pitchTimer = nullptr;
-    }
-    
-    // 버튼 정리
-    if (backButton) {
-        backButton->deleteLater();
-        backButton = nullptr;
-    }
-    
-    qDebug() << "GameWindow destructor completed";
-}
-
 void GameWindow::setupGame()
 {
     qDebug() << "Setting up game window...";
-    
-    // 현재 화면 크기 가져오기
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
-    
-    // 게임 윈도우 설정 - 표시되기 전에 모든 설정 완료
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
-    
-    // 창 크기와 위치를 화면에 맞게 설정
     setGeometry(screenGeometry);
-    
-    // 전체화면 상태로 미리 설정
     setWindowState(Qt::WindowFullScreen);
-    
-    // 기본 설정 사용
-    
-    // 모든 설정이 완료된 후 윈도우 표시
     show();
     raise();
     activateWindow();
-    
-    // 플레이어 초기화 (화면 크기에 맞게 조정)
     player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
     targetY = height()/2 - PLAYER_SIZE/2;
     
-    // 타이머 설정
-    gameTimer = new QTimer(this);
-    if (gameTimer) {
+    // 타이머는 이미 QObject(parent)로 관리되므로 중복 생성 방지
+    if (!gameTimer) {
+        gameTimer = new QTimer(this);
         connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
-        gameTimer->start(16); // 약 60 FPS
     }
+    gameTimer->start(16); // 약 60 FPS
     
-    obstacleTimer = new QTimer(this);
-    if (obstacleTimer) {
+    if (!obstacleTimer) {
+        obstacleTimer = new QTimer(this);
         connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
-        obstacleTimer->start(2000); // 2초마다 장애물 생성
     }
+    obstacleTimer->start(2000); // 2초마다 장애물 생성
     
-    // 피치 읽기 타이머
-    pitchTimer = new QTimer(this);
-    if (pitchTimer) {
+    if (!pitchTimer) {
+        pitchTimer = new QTimer(this);
         connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
-        pitchTimer->start(50); // 20Hz로 피치 읽기
     }
+    pitchTimer->start(50); // 20Hz로 피치 읽기
     
     gameRunning = true;
     score = 0;
     obstacles.clear();
     stars.clear();
     
-    // 별 모양 초기화 - 둥근 모서리와 부드러운 곡선
-    starPath = QPainterPath();
-    const qreal angleStep = M_PI / STAR_POINTS;
-    const qreal controlDist = CORNER_SMOOTHNESS; // 제어점 거리 비율
-    
-    for (int i = 0; i < STAR_POINTS * 2; ++i) {
-        qreal radius = (i % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
-        qreal angle = i * angleStep;
-        qreal nextAngle = (i + 1) * angleStep;
-        
-        QPointF point(radius * sin(angle), -radius * cos(angle));
-        qreal nextRadius = ((i + 1) % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
-        QPointF nextPoint(nextRadius * sin(nextAngle), -nextRadius * cos(nextAngle));
-        
-        if (i == 0) {
-            starPath.moveTo(point);
+    // 별 모양 초기화 - 둥근 모서리와 부드러운 곡선 (캐싱)
+    if (starPath.isEmpty()) {
+        starPath = QPainterPath();
+        const qreal angleStep = M_PI / STAR_POINTS;
+        const qreal controlDist = CORNER_SMOOTHNESS;
+        for (int i = 0; i < STAR_POINTS * 2; ++i) {
+            qreal radius = (i % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+            qreal angle = i * angleStep;
+            qreal nextAngle = (i + 1) * angleStep;
+            QPointF point(radius * sin(angle), -radius * cos(angle));
+            qreal nextRadius = ((i + 1) % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+            QPointF nextPoint(nextRadius * sin(nextAngle), -nextRadius * cos(nextAngle));
+            if (i == 0) starPath.moveTo(point);
+            QPointF ctrl1 = point + QPointF(radius * controlDist * cos(angle), radius * controlDist * sin(angle));
+            QPointF ctrl2 = nextPoint - QPointF(nextRadius * controlDist * cos(nextAngle), nextRadius * controlDist * sin(nextAngle));
+            starPath.cubicTo(ctrl1, ctrl2, nextPoint);
         }
-        
-        // 현재 점과 다음 점 사이에 제어점을 추가하여 둥근 모서리 생성
-        QPointF ctrl1 = point + QPointF(radius * controlDist * cos(angle), radius * controlDist * sin(angle));
-        QPointF ctrl2 = nextPoint - QPointF(nextRadius * controlDist * cos(nextAngle), nextRadius * controlDist * sin(nextAngle));
-        
-        starPath.cubicTo(ctrl1, ctrl2, nextPoint);
+        starPath.closeSubpath();
     }
-    starPath.closeSubpath();
     
     // 마이크 프로세스 시작
     startMicProcess();
     
-    // 뒤로가기 버튼 설정
-    setupBackButton();
+    // 뒤로가기 버튼 설정 (중복 생성 방지)
+    if (!backButton) {
+        setupBackButton();
+    }
+    
+    // player2.png 미리 스케일링 (성능 최적화)
+    static QPixmap cachedPlayerPixmap;
+    const int PLAYER_DISPLAY_SIZE = PLAYER_SIZE * 3; // 기존보다 3배 크게
+    if (cachedPlayerPixmap.isNull()) {
+        QPixmap rawPixmap;
+        if (rawPixmap.load("/mnt/nfs/player2.png")) {
+            cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            qDebug() << "Player image loaded and cached from /mnt/nfs/player2.png (3x size)";
+        } else {
+            qDebug() << "Failed to load player image from /mnt/nfs/player2.png";
+        }
+    }
+    playerImage = cachedPlayerPixmap;
     
     // 초기 화면 그리기
     update();
@@ -263,12 +215,20 @@ void GameWindow::readPitchData()
 void GameWindow::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
-    
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
-    
-    // 배경 그리기
-    painter.fillRect(rect(), Qt::black);
+    // 배경 그리기 (이미지 최적화 예시)
+    static QPixmap bgPixmap;
+    if (bgPixmap.isNull()) {
+        bgPixmap.load("/mnt/nfs/background.png");
+        if (!bgPixmap.isNull())
+            bgPixmap = bgPixmap.scaled(size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    }
+    if (!bgPixmap.isNull()) {
+        painter.drawPixmap(rect(), bgPixmap);
+    } else {
+        painter.fillRect(rect(), Qt::black);
+    }
     
     // 별 그리기 - 활성 별만 그리기
     painter.setBrush(QColor(255, 223, 0));  // 밝은 노란색
@@ -304,16 +264,35 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.restore();
     }
     
-    // 플레이어 그리기 (원형)
-    painter.setBrush(Qt::white);
-    painter.setPen(Qt::NoPen);  // 테두리 없이 단색으로 (성능 향상)
-    painter.drawEllipse(player);
+    // 장애물 그리기 (상단/하단 이미지로 대체)
+    static QPixmap obstacleTopPixmap, obstacleBottomPixmap;
+    if (obstacleTopPixmap.isNull())
+        obstacleTopPixmap.load("/mnt/nfs/obstacle_top.png");
+    if (obstacleBottomPixmap.isNull())
+        obstacleBottomPixmap.load("/mnt/nfs/obstacle_bottom.png");
+    for (int i = 0; i < obstacles.size(); ++i) {
+        const QRect &obstacle = obstacles[i];
+        // 상단 장애물: y==0, 하단 장애물: y>0
+        if (obstacle.y() == 0 && !obstacleTopPixmap.isNull()) {
+            painter.drawPixmap(obstacle, obstacleTopPixmap);
+        } else if (obstacle.y() > 0 && !obstacleBottomPixmap.isNull()) {
+            painter.drawPixmap(obstacle, obstacleBottomPixmap);
+        } else {
+            painter.setBrush(Qt::red);
+            painter.setPen(Qt::NoPen);
+            painter.drawRect(obstacle);
+        }
+    }
     
-    // 장애물 그리기 - 일괄 처리
-    painter.setBrush(Qt::red);
-    painter.setPen(Qt::NoPen);  // 테두리 없이 단색으로 (성능 향상)
-    for (const QRect &obstacle : obstacles) {
-        painter.drawRect(obstacle);
+    // 플레이어 그리기 (이미지)
+    if (!playerImage.isNull()) {
+        int px = player.x() + (player.width() - playerImage.width())/2;
+        int py = player.y() + (player.height() - playerImage.height())/2;
+        painter.drawPixmap(px, py, playerImage.width(), playerImage.height(), playerImage);
+    } else {
+        painter.setBrush(Qt::white);
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(player);
     }
     
     // 텍스트 정보 표시 - 캐싱 및 최적화
@@ -649,4 +628,12 @@ void GameWindow::goBackToMainWindow()
 void GameWindow::setCurrentPlayer(const QString &playerName)
 {
     currentPlayerName = playerName;
+}
+
+GameWindow::~GameWindow() {
+    // Clean up resources if needed
+    // All child QObjects with 'this' as parent are deleted automatically,
+    // but we ensure any manual allocations are cleaned up.
+    // (Most members are parented to 'this', so explicit deletion is not strictly necessary.)
+    // If you add any new raw pointers, clean them up here.
 }

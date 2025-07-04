@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/resources">
+        <!-- Qt 리소스 사용 안함: 파일 시스템에서 직접 로드하므로 주석처리 -->
+        <!-- <file>../../media/sf_share/qt/hello_world/resources/player.png</file> -->
+    </qresource>
+</RCC>

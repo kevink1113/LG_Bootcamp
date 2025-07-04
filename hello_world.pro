@@ -30,3 +30,5 @@ FORMS    += mainwindow.ui
 
 DISTFILES += \
 #    main.qml
+
+RESOURCES += resources.qrc

@@ -95,6 +95,8 @@ private:
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
     static const int OBSTACLE_GAP = 200;  // 장애물 사이 간격
+
+    QPixmap playerImage; // 플레이어 이미지
 };
 
 #endif // GAMEWINDOW_H
