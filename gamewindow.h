@@ -94,6 +94,7 @@ private:
     void processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port);
     void sendGameState();
     void processGameState(const QJsonObject &gameState);
+    void processHostResponse();
     void startLobby();
     void leaveLobby();
     void checkGameStart();

@@ -19,6 +19,7 @@
 #include <QJsonObject>
 #include <QHostAddress>
 
+#include <QNetworkInterface>
 
 GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     : QMainWindow(parent)
@@ -1032,7 +1033,7 @@ void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
             qint64 bytesSent = udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
             
             if (bytesSent != datagram.size()) {
-                //qDebug() << "Failed to send datagram to" << address.toString();
+                qDebug() << "Failed to send datagram to" << address.toString();
             }
         }
     } catch (...) {
@@ -1143,6 +1144,43 @@ void GameWindow::processIncomingData(const QByteArray &data, const QHostAddress 
         else if (type == "game_state") {
             processGameState(obj);
         }
+        else if (type == "host_check") {
+            qDebug() << "Received host check from" << sender.toString();
+            // 현재 시스템의 IP 가져오기
+            QString currentIP;
+            QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+            for (const QNetworkInterface &interface : interfaces) {
+                if (interface.humanReadableName() == "eth0") {
+                    QList<QNetworkAddressEntry> entries = interface.addressEntries();
+                    for (const QNetworkAddressEntry &entry : entries) {
+                        if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol) {
+                            currentIP = entry.ip().toString();
+                            break;
+                        }
+                    }
+                }
+                if (!currentIP.isEmpty()) break;
+            }
+            qDebug() << "Current system IP is :" << currentIP;
+            // 현재 IP와 sender IP 비교
+            if (currentIP == sender.toString()) {
+                qDebug() << "Sender IP matches the current system IP:" << currentIP;
+            }
+            else {
+                QJsonObject responseObj;
+                responseObj["type"] = "host_check_response";
+                QJsonDocument responseDoc(responseObj);
+                QByteArray response = responseDoc.toJson();
+                udpSocket->writeDatagram(response, sender, port);
+            }
+        }
+        else if (type == "host_check_response") {
+            qDebug() << "Received host check response from" << sender.toString();
+            isHost = false; // 응답이 있으면 클라이언트로 간주
+        }
+        else {
+            qDebug() << "Unknown message type:" << type;
+        }
     } catch (...) {
         qDebug() << "Exception in processIncomingData";
     }
@@ -1178,26 +1216,17 @@ void GameWindow::startLobby()
     qDebug() << "Starting lobby...";
     isInLobby = true;
     isGameStarted = false;
-    // check if this player is the host
-    QByteArray datagram_for_host = "host_check";
-    int sendFailedCount = 0;
-
-    for(int i=3; i<=8; i++) {
+    isHost = true; // 기본적으로 호스트로 시작
+    // 호스트 확인을 위한 데이터그램 전송
+    QJsonObject hostCheckMsg;
+    hostCheckMsg["type"] = "host_check";
+    QJsonDocument doc(hostCheckMsg);
+    QByteArray datagram = doc.toJson();
+    for (int i = 3; i <= 8; i++) {
         QHostAddress address(QString("192.168.10.%1").arg(i));
-        qint64 bytesSent = udpSocket->writeDatagram(datagram_for_host, address, BROADCAST_PORT);
-        
-        if (bytesSent != datagram_for_host.size()) {
-            sendFailedCount++;
-        }
+        udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
     }
-    if (sendFailedCount == 6) {
-        isHost = true;
-        qDebug() << "You are the host";
-    } else {
-        qDebug() << "You are the client";
-    }    
-    // 준비 상태 전송
-    updatePlayerPosition(player.x(), player.y(), score, false);
+    qDebug() << "Datagram sent to all hosts, waiting for responses...";
 }
 
 void GameWindow::leaveLobby()
