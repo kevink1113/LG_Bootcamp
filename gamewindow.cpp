@@ -430,12 +430,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
         int h = obstacle.height();
-        int x;
-        if ( isMultiplayerMode && !isHost) {
-            x = obstacle.x();
-        } else {
-            x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
-        }
+        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
         int y = obstacle.y();
         if (!croppedPillar.isNull()) {
             QPixmap scaled;
@@ -1385,7 +1380,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     lastGameStateUpdate = timestamp;
     
     // 장애물 동기화
-    // obstacles.clear();
+    obstacles.clear();
     QJsonArray obstaclesArray = gameState["obstacles"].toArray();
     for (const QJsonValue &value : obstaclesArray) {
         QJsonObject obstacleObj = value.toObject();
@@ -1399,7 +1394,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     }
     
     // 별 동기화
-    // stars.clear();
+    stars.clear();
     QJsonArray starsArray = gameState["stars"].toArray();
     for (const QJsonValue &value : starsArray) {
         QJsonObject starObj = value.toObject();
