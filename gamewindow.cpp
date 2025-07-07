@@ -1178,13 +1178,24 @@ void GameWindow::startLobby()
     qDebug() << "Starting lobby...";
     isInLobby = true;
     isGameStarted = false;
-    
-    // 첫 번째 플레이어가 호스트가 됨
-    if (otherPlayers.isEmpty()) {
+    // check if this player is the host
+    QByteArray datagram_for_host = "host_check";
+    int sendFailedCount = 0;
+
+    for(int i=3; i<=8; i++) {
+        QHostAddress address(QString("192.168.10.%1").arg(i));
+        qint64 bytesSent = udpSocket->writeDatagram(datagram_for_host, address, BROADCAST_PORT);
+        
+        if (bytesSent != datagram_for_host.size()) {
+            sendFailedCount++;
+        }
+    }
+    if (sendFailedCount == 6) {
         isHost = true;
         qDebug() << "You are the host";
-    }
-    
+    } else {
+        qDebug() << "You are the client";
+    }    
     // 준비 상태 전송
     updatePlayerPosition(player.x(), player.y(), score, false);
 }
@@ -1274,14 +1285,14 @@ void GameWindow::startGameCountdown()
         }
         
         // 호스트가 첫 번째 장애물 생성
-        // if (isHost) {
-        //     // 호스트의 obstacleTimer 시작
-        //     if (obstacleTimer && !obstacleTimer->isActive()) {
-        //         obstacleTimer->start(2000);
-        //     }
-        //     spawnObstacles();
-        //     qDebug() << "startGameCountdowon() : Obstacle timer started with interval 2000ms for HOST.";
-        // }
+        if (isHost) {
+            // 호스트의 obstacleTimer 시작
+            if (obstacleTimer && !obstacleTimer->isActive()) {
+                obstacleTimer->start(2000);
+            }
+            spawnObstacles();
+            qDebug() << "startGameCountdowon() : Obstacle timer started with interval 2000ms for HOST.";
+        }
         
         // 클라이언트는 obstacleTimer를 시작하지 않음 (호스트의 게임 상태를 받아서 동기화)
     }
