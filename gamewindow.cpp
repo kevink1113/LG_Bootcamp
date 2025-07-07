@@ -174,12 +174,13 @@ void GameWindow::setupGame()
                 gameTimer->start(16); // 약 60 FPS
             }
         }
-        
-        if (!obstacleTimer) {
+        // client 에서 setupGame() 호출 시 장애물 타이머는 호스트에서만 시작하도록 설정
+        if (!obstacleTimer && (!isMultiplayerMode || isHost)) {
             obstacleTimer = new QTimer(this);
             if (obstacleTimer) {
                 connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
                 obstacleTimer->start(2000); // 2초마다 장애물 생성
+                qDebug() << "setupGame() : Obstacle timer started with interval 2000ms";
             }
         }
         
@@ -1279,6 +1280,7 @@ void GameWindow::startGameCountdown()
                 obstacleTimer->start(2000);
             }
             spawnObstacles();
+            qDebug() << "startGameCountdowon() : Obstacle timer started with interval 2000ms for HOST.";
         }
         
         // 클라이언트는 obstacleTimer를 시작하지 않음 (호스트의 게임 상태를 받아서 동기화)
