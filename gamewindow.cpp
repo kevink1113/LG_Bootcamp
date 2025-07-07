@@ -52,11 +52,22 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
     
+    // 중복 생성 방지를 위한 정적 플래그
+    static bool isInitializing = false;
+    if (isInitializing) {
+        qDebug() << "GameWindow initialization already in progress, skipping...";
+        return;
+    }
+    isInitializing = true;
+    
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
     
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
-    QTimer::singleShot(100, this, &GameWindow::setupGame);
+    QTimer::singleShot(100, this, [this]() {
+        setupGame();
+        isInitializing = false;
+    });
 }
 
 
@@ -190,6 +201,14 @@ GameWindow::~GameWindow()
 void GameWindow::setupGame()
 {
     qDebug() << "Setting up game window...";
+    
+    // 중복 실행 방지
+    static bool isSetupInProgress = false;
+    if (isSetupInProgress) {
+        qDebug() << "Game setup already in progress, skipping...";
+        return;
+    }
+    isSetupInProgress = true;
 
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
@@ -348,6 +367,9 @@ void GameWindow::setupGame()
     } catch (...) {
         qDebug() << "Unknown exception in setupGame";
     }
+    
+    // 설정 완료 후 플래그 리셋
+    isSetupInProgress = false;
 }
 
 void GameWindow::startMicProcess()

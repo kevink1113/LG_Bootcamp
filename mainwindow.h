@@ -63,6 +63,10 @@ private:
     bool isCreatingSongGame;
     QTimer *gameWindowCreationTimer;
     
+    // 중복 클릭 방지를 위한 추가 변수들
+    QTimer *buttonCooldownTimer;
+    bool isButtonCooldownActive;
+    
     void createSettingsDialog();
     void updateButtonPositions();
     void updateCurrentPlayerDisplay();  // 현재 플레이어 표시 업데이트

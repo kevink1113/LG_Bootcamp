@@ -38,6 +38,8 @@ MainWindow::MainWindow(QWidget *parent) :
     isCreatingGameWindow(false),
     isCreatingSongGame(false), // 노래 게임 생성 플래그 추가
     gameWindowCreationTimer(nullptr),
+    buttonCooldownTimer(nullptr),
+    isButtonCooldownActive(false),
     backgroundPixmap("/mnt/nfs/backgroundinit.png"),
     titleLabelY(130),
     titleLabel(nullptr) // 제목 라벨 멤버 초기화
@@ -316,6 +318,17 @@ MainWindow::MainWindow(QWidget *parent) :
     gameWindowCreationTimer->setSingleShot(true);
     connect(gameWindowCreationTimer, &QTimer::timeout, this, &MainWindow::createNewGameWindow);
     
+    // 버튼 쿨다운 타이머 초기화
+    buttonCooldownTimer = new QTimer(this);
+    buttonCooldownTimer->setSingleShot(true);
+    connect(buttonCooldownTimer, &QTimer::timeout, this, [this]() {
+        isButtonCooldownActive = false;
+        // 모든 메뉴 버튼 다시 활성화
+        if (menuButton1) menuButton1->setEnabled(true);
+        if (menuButton2) menuButton2->setEnabled(true);
+        if (menuButton3) menuButton3->setEnabled(true);
+    });
+    
     createSettingsDialog();
     
     // 초기 플레이어 표시 업데이트 (지연 실행으로 모든 UI가 준비된 후 실행)
@@ -336,6 +349,13 @@ MainWindow::~MainWindow()
         gameWindowCreationTimer->stop();
         gameWindowCreationTimer->deleteLater();
         gameWindowCreationTimer = nullptr;
+    }
+    
+    // 버튼 쿨다운 타이머 정리
+    if (buttonCooldownTimer) {
+        buttonCooldownTimer->stop();
+        buttonCooldownTimer->deleteLater();
+        buttonCooldownTimer = nullptr;
     }
     
     // 배경 음악 프로세스 정리
@@ -603,20 +623,18 @@ void MainWindow::on_menuButton1_clicked()
 {
     qDebug() << "Menu 1 clicked - Single Player";
     
-    // 버튼을 일시적으로 비활성화하여 중복 클릭 방지
-    if (menuButton1) {
-        menuButton1->setEnabled(false);
-    }
-    
-    // 이미 게임 윈도우가 생성 중이면 무시
-    if (isCreatingGameWindow) {
-        qDebug() << "Game window creation already in progress, ignoring click";
-        // 버튼 다시 활성화
-        if (menuButton1) {
-            menuButton1->setEnabled(true);
-        }
+    // 쿨다운 중이거나 이미 게임 윈도우가 생성 중이면 무시
+    if (isButtonCooldownActive || isCreatingGameWindow) {
+        qDebug() << "Button cooldown active or game window creation in progress, ignoring click";
         return;
     }
+    
+    // 쿨다운 시작 (1초)
+    isButtonCooldownActive = true;
+    if (menuButton1) menuButton1->setEnabled(false);
+    if (menuButton2) menuButton2->setEnabled(false);
+    if (menuButton3) menuButton3->setEnabled(false);
+    buttonCooldownTimer->start(1000);
     
     isCreatingGameWindow = true;
     
@@ -691,11 +709,9 @@ void MainWindow::on_menuButton1_clicked()
             }
         }
         
-        // 생성 완료 후 플래그 리셋 및 버튼 다시 활성화
+        // 생성 완료 후 플래그 리셋
         isCreatingGameWindow = false;
-        if (menuButton1) {
-            menuButton1->setEnabled(true);
-        }
+        // 버튼 활성화는 쿨다운 타이머에서 처리됨
     });
 }
 
@@ -792,20 +808,18 @@ void MainWindow::on_menuButton2_clicked()
 {
     qDebug() << "Menu 2 clicked - Multiplayer";
     
-    // 버튼을 일시적으로 비활성화하여 중복 클릭 방지
-    if (menuButton2) {
-        menuButton2->setEnabled(false);
-    }
-    
-    // 이미 게임 윈도우가 생성 중이면 무시
-    if (isCreatingGameWindow) {
-        qDebug() << "Game window creation already in progress, ignoring click";
-        // 버튼 다시 활성화
-        if (menuButton2) {
-            menuButton2->setEnabled(true);
-        }
+    // 쿨다운 중이거나 이미 게임 윈도우가 생성 중이면 무시
+    if (isButtonCooldownActive || isCreatingGameWindow) {
+        qDebug() << "Button cooldown active or game window creation in progress, ignoring click";
         return;
     }
+    
+    // 쿨다운 시작 (1초)
+    isButtonCooldownActive = true;
+    if (menuButton1) menuButton1->setEnabled(false);
+    if (menuButton2) menuButton2->setEnabled(false);
+    if (menuButton3) menuButton3->setEnabled(false);
+    buttonCooldownTimer->start(1000);
     
     isCreatingGameWindow = true;
     
@@ -880,11 +894,9 @@ void MainWindow::on_menuButton2_clicked()
             }
         }
         
-        // 생성 완료 후 플래그 리셋 및 버튼 다시 활성화
+        // 생성 완료 후 플래그 리셋
         isCreatingGameWindow = false;
-        if (menuButton2) {
-            menuButton2->setEnabled(true);
-        }
+        // 버튼 활성화는 쿨다운 타이머에서 처리됨
     });
 }
 
@@ -892,11 +904,18 @@ void MainWindow::on_menuButton3_clicked()
 {
     qDebug() << "Menu 3 clicked - Song Game";
     
-    // 이미 노래 게임이 생성 중이면 무시
-    if (isCreatingSongGame) {
-        qDebug() << "Song game creation already in progress, ignoring click";
+    // 쿨다운 중이거나 이미 노래 게임이 생성 중이면 무시
+    if (isButtonCooldownActive || isCreatingSongGame) {
+        qDebug() << "Button cooldown active or song game creation in progress, ignoring click";
         return;
     }
+    
+    // 쿨다운 시작 (1초)
+    isButtonCooldownActive = true;
+    if (menuButton1) menuButton1->setEnabled(false);
+    if (menuButton2) menuButton2->setEnabled(false);
+    if (menuButton3) menuButton3->setEnabled(false);
+    buttonCooldownTimer->start(1000);
     
     isCreatingSongGame = true;
     
