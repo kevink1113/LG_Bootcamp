@@ -1279,6 +1279,9 @@ void GameWindow::checkGameStart()
 {
     if (!isInLobby || isGameStarted) return;
     
+    // 이미 카운트다운이 진행 중이면 중복 실행 방지
+    if (countdownTimer && countdownTimer->isActive()) return;
+    
     // 최소 2명 이상이고 모든 플레이어가 준비되었을 때 게임 시작
     int totalPlayers = otherPlayers.size() + 1;
     if (totalPlayers >= 2) {
@@ -1286,6 +1289,12 @@ void GameWindow::checkGameStart()
         if (isHost) {
             qDebug() << "Starting game countdown...";
             countdownValue = 3;
+            
+            // 기존 타이머가 있다면 정리
+            if (countdownTimer) {
+                countdownTimer->stop();
+                countdownTimer->deleteLater();
+            }
             
             countdownTimer = new QTimer(this);
             connect(countdownTimer, &QTimer::timeout, this, &GameWindow::startGameCountdown);
