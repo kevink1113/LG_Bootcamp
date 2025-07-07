@@ -162,6 +162,7 @@ private:
 
 
     QPixmap playerImage; // 플레이어 이미지
+    GameOverDialog *gameOverDialog; // 게임 오버 다이얼로그 포인터
 
 //    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
 

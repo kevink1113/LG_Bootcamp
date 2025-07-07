@@ -48,6 +48,7 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , currentPitch(0)
     , currentVolume(0.0f)
     , targetY(300)  // 기본값으로 설정
+    , gameOverDialog(nullptr)
 
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
@@ -861,20 +862,20 @@ void GameWindow::gameOver()
         pitchTimer->stop();
     }
     
-    GameOverDialog *dialog = new GameOverDialog(score, currentPlayerName, this);
+    gameOverDialog = new GameOverDialog(score, currentPlayerName, this);
     
-    connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
+    connect(gameOverDialog, &GameOverDialog::mainMenuRequested, this, [this]() {
         // 메인 윈도우로 돌아가라는 시그널 발생
         emit requestMainWindow();
         // 게임 윈도우 닫기
         close();
     });
     
-    connect(dialog, &GameOverDialog::rankingRequested, this, []() {
+    connect(gameOverDialog, &GameOverDialog::rankingRequested, this, []() {
         // Ranking 기능은 나중에 구현
     });
     
-    connect(dialog, &GameOverDialog::restartRequested, this, [this]() {
+    connect(gameOverDialog, &GameOverDialog::restartRequested, this, [this]() {
         // 게임 재시작
         gameRunning = true;
         score = 0;
@@ -896,12 +897,12 @@ void GameWindow::gameOver()
     });
     
     // 비모달로 표시 (show() 사용, exec() 대신)
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
+    gameOverDialog->show();
+    gameOverDialog->raise();
+    gameOverDialog->activateWindow();
     
     // 다이얼로그가 닫힐 때 자동으로 삭제되도록 설정
-    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
+    gameOverDialog->setAttribute(Qt::WA_DeleteOnClose, true);
 }
 
 void GameWindow::keyPressEvent(QKeyEvent *event)
@@ -941,19 +942,18 @@ void GameWindow::setupBackButton()
     backButton->setFixedSize(50, 50);
     backButton->move(10, 10);
     
-    // 스타일 설정
+    // 스타일 설정 (배경 제거)
     QString buttonStyle = 
         "QPushButton {"
-        "   background-color: rgba(255, 255, 255, 180);"
+        "   background-color: transparent;"
         "   border: none;"
-        "   border-radius: 10px;"
         "   padding: 5px;"
         "}"
         "QPushButton:hover {"
-        "   background-color: rgba(255, 255, 255, 220);"
+        "   background-color: rgba(255, 255, 255, 50);"
         "}"
         "QPushButton:pressed {"
-        "   background-color: rgba(200, 200, 200, 220);"
+        "   background-color: rgba(255, 255, 255, 100);"
         "}";
     backButton->setStyleSheet(buttonStyle);
     
@@ -961,7 +961,7 @@ void GameWindow::setupBackButton()
     QStyle *style = QApplication::style();
     QIcon backIcon = style->standardIcon(QStyle::SP_ArrowBack);
     backButton->setIcon(backIcon);
-    backButton->setIconSize(QSize(30, 30));
+    backButton->setIconSize(QSize(40, 40));
     
     connect(backButton, &QPushButton::clicked, this, &GameWindow::goBackToMainWindow);
     backButton->show();
@@ -1001,6 +1001,12 @@ void GameWindow::playSound(const QString &soundFile)
 void GameWindow::goBackToMainWindow()
 {
     qDebug() << "Going back to main window";
+    
+    // 게임 오버 다이얼로그가 열려있으면 닫기
+    if (gameOverDialog && gameOverDialog->isVisible()) {
+        gameOverDialog->close();
+        gameOverDialog = nullptr;
+    }
     
     // 게임 상태 정지
     gameRunning = false;
