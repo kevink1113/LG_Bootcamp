@@ -738,6 +738,18 @@ void GameWindow::updateGame()
         frameCount++;
     }
     
+    // 점수에 따른 장애물 생성 빈도 조절 (최적화: 10점마다 체크)
+    static int lastDifficultyCheck = 0;
+    if (score >= lastDifficultyCheck + 10) {
+        lastDifficultyCheck = score;
+        int difficultyLevel = score / 50; // 50점마다 난이도 증가
+        int spawnInterval = qMax(1200, 2500 - difficultyLevel * 150); // 2500ms -> 1200ms까지 감소
+        
+        if (obstacleTimer && obstacleTimer->isActive()) {
+            obstacleTimer->setInterval(spawnInterval);
+        }
+    }
+    
     // 화면 갱신
     update();
 }
@@ -752,39 +764,44 @@ void GameWindow::spawnObstacles()
         if (!isHost) return;
     }
     
-    // 고정된 시드값 사용 (모든 보드에서 동일한 랜덤 시퀀스 생성)
-    static QRandomGenerator fixedGenerator(FIXED_SEED); // 고정된 시드값
-    
-    // 장애물 개수에 따라 시드값 조정 (시간에 따른 변화)
-    int obstacleCount = obstacles.size() / 2; // 장애물 쌍의 개수
-    fixedGenerator.seed(FIXED_SEED + obstacleCount);
-    
-    // 장애물 간격을 플레이어가 통과할 수 있도록 조정
-    // 최소 간격: OBSTACLE_GAP/2 + PLAYER_SIZE + 여유공간
-    int minGapY = OBSTACLE_GAP/2 + PLAYER_SIZE + 50; // 최소 간격
-    int maxGapY = height() - OBSTACLE_GAP/2 - PLAYER_SIZE - 50; // 최대 간격
+    static QRandomGenerator fixedGenerator(FIXED_SEED);
+    int obstacleCount = obstacles.size() / 2;
+    fixedGenerator.seed(QDateTime::currentMSecsSinceEpoch() + obstacleCount);
+
+    // 점수에 따른 난이도 조절
+    int difficultyLevel = score / 50; // 50점마다 난이도 증가
+    int minGap = qMax(60, 150 - difficultyLevel * 15); // 최소 간격 점진적 감소 (150 -> 60)
+    int maxGap = qMax(100, 180 - difficultyLevel * 20); // 최대 간격 점진적 감소 (180 -> 100)
     
     // 범위가 유효한지 확인
-    if (minGapY >= maxGapY) {
-        minGapY = 150;
-        maxGapY = height() - 150;
+    if (minGap >= maxGap) {
+        minGap = 80;
+        maxGap = 120;
     }
     
+    // 장애물 사이의 통과 공간을 랜덤하게 설정
+    int randomGap = fixedGenerator.bounded(minGap, maxGap + 1);
+    
+    // gapY 계산 (장애물 사이 통과 위치)
+    int minGapY = randomGap/2 + PLAYER_SIZE + 30;
+    int maxGapY = height() - randomGap/2 - PLAYER_SIZE - 30;
+    if (minGapY >= maxGapY) {
+        minGapY = 60;
+        maxGapY = height() - 60;
+    }
     int gapY = fixedGenerator.bounded(minGapY, maxGapY);
-    
+
     // 위쪽 장애물
-    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - randomGap/2);
     obstacles.append(topObstacle);
-    
     // 아래쪽 장애물
-    QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
+    QRect bottomObstacle(width(), gapY + randomGap/2, OBSTACLE_WIDTH, height() - (gapY + randomGap/2));
     obstacles.append(bottomObstacle);
 
-    // 30% 확률로 별 생성 (고정된 시드값 사용)
-    if (fixedGenerator.bounded(100) < 30) {
-        // 별을 장애물 사이 통과 가능한 공간의 중앙에 배치
+    // 별 생성 확률은 그대로
+    if (fixedGenerator.bounded(100) < 20) {
         int starX = width() + OBSTACLE_WIDTH/2;
-        int starY = gapY; // 장애물 사이 공간의 중앙
+        int starY = gapY;
         stars.append(Star(QPointF(starX, starY)));
     }
     
