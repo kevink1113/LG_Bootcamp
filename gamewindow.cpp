@@ -683,7 +683,12 @@ void GameWindow::spawnObstacles()
         int starY = gapY; // 장애물 사이 공간의 중앙
         stars.append(Star(QPointF(starX, starY)));
     }
-    
+    // 장애물 디버깅 출력
+    qDebug() << "Spawned Obstacles:";
+    for (const QRect &obstacle : obstacles) {
+        qDebug() << "Obstacle - x:" << obstacle.x() << "y:" << obstacle.y()
+                 << "width:" << obstacle.width() << "height:" << obstacle.height();
+    }
     // 게임 상태 전송은 updateGame에서 주기적으로 처리
 }
 
