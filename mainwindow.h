@@ -24,6 +24,8 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
 
+    void setTitleLabelY(int y); // Melody Game 제목 라벨 Y좌표 설정
+
 protected:
     virtual void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override; // 추가된 부분
@@ -43,6 +45,9 @@ private:
     QSlider *volumeSlider;
     QPushButton *rankingButton;
     QPushButton *playerButton;  // 플레이어 설정 버튼 추가
+    QPushButton *menuButton1;   // 새로운 메뉴 버튼 1
+    QPushButton *menuButton2;   // 새로운 메뉴 버튼 2
+    QPushButton *menuButton3;   // 새로운 메뉴 버튼 3
     RankingDialog *rankingDialog;
     PlayerDialog *playerDialog;
     QLabel *currentPlayerLabel;  // 현재 플레이어 이름 표시 라벨
@@ -67,6 +72,9 @@ private:
     void controlBackgroundMusicProcess(bool start); // 리눅스 명령어로 배경 음악 제어
 
     QPixmap backgroundPixmap; // 메인윈도우 배경 이미지
+
+    int titleLabelY; // Melody Game 제목 라벨 Y좌표
+    QLabel *titleLabel;
 };
 
 #endif // MAINWINDOW_H

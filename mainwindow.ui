@@ -51,7 +51,7 @@
         <property name="minimumSize">
          <size>
           <width>200</width>
-          <height>80</height>
+          <height>30</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -80,7 +80,7 @@ QPushButton:pressed {
         <property name="minimumSize">
          <size>
           <width>200</width>
-          <height>80</height>
+          <height>30</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -109,7 +109,7 @@ QPushButton:pressed {
         <property name="minimumSize">
          <size>
           <width>200</width>
-          <height>80</height>
+          <height>30</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -147,31 +147,6 @@ QPushButton:pressed {
        </size>
       </property>
      </spacer>
-    </item>
-    <item row="2" column="0" colspan="2">
-     <widget class="QLabel" name="titleLabel">
-      <property name="minimumSize">
-       <size>
-        <width>0</width>
-        <height>150</height>
-       </size>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">font-family: &quot;Segoe UI&quot;, &quot;Malgun Gothic&quot;, Arial;
-font-size: 52pt;
-font-weight: 900;
-color: #2c3e50;
-text-align: center;
-letter-spacing: 2px;
-padding-top: 100px;</string>
-      </property>
-      <property name="text">
-       <string>Melody Game</string>
-      </property>
-      <property name="alignment">
-       <set>Qt::AlignCenter</set>
-      </property>
-     </widget>
     </item>
     <item row="0" column="1">
      <widget class="QPushButton" name="playerButton">
