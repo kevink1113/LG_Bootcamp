@@ -177,23 +177,8 @@ void SongGame::setupGame()
 
 void SongGame::loadSongData()
 {
-    // 선택된 노래 확인
-    QString selectedSong = property("selectedSong").toString();
-    if (selectedSong.isEmpty()) {
-        selectedSong = "애국가"; // 기본값
-    }
-    
-    QString csvFile;
-    if (selectedSong == "곰세마리") {
-        csvFile = "/mnt/nfs/곰세마리.csv";
-    } else if (selectedSong == "산토끼") {
-        csvFile = "/mnt/nfs/산토끼.csv";
-    } else {
-        csvFile = "/mnt/nfs/song.csv"; // 기본값
-    }
-    
-    songNotes = parseCSV(csvFile);
-    qDebug() << "Loaded" << songNotes.size() << "notes from song data for" << selectedSong;
+    songNotes = parseCSV("/mnt/nfs/애국가.csv");
+    qDebug() << "Loaded" << songNotes.size() << "notes from song data";
     
     // 노트의 시작/끝 시간 계산
     double currentTime = 0.0;

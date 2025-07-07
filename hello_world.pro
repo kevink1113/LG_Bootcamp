@@ -21,8 +21,7 @@ SOURCES += \
     gameoverdialog.cpp \
     rankingdialog.cpp \
     playerdialog.cpp \
-    songgame.cpp \
-    songselectiondialog.cpp
+    songgame.cpp
 
 HEADERS += \
     mainwindow.h \
@@ -30,8 +29,7 @@ HEADERS += \
     gameoverdialog.h \
     rankingdialog.h \
     playerdialog.h \
-    songgame.h \
-    songselectiondialog.h
+    songgame.h
 
 FORMS += \
     mainwindow.ui
