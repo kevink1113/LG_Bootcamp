@@ -10,6 +10,7 @@
 #include "gamewindow.h"
 #include "rankingdialog.h"
 #include "playerdialog.h"
+#include "songgame.h"
 
 namespace Ui {
 class MainWindow;
@@ -38,6 +39,7 @@ private slots:
 private:
     Ui::MainWindow *ui;
     GameWindow *gameWindow;
+    SongGame *songGame;
     QDialog *settingsDialog;
     QSlider *volumeSlider;
     QPushButton *rankingButton;
@@ -53,6 +55,7 @@ private:
     
     // 게임 윈도우 생성 상태 관리
     bool isCreatingGameWindow;
+    bool isCreatingSongGame;
     QTimer *gameWindowCreationTimer;
     
     void createSettingsDialog();

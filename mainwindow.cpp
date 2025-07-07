@@ -31,7 +31,9 @@ MainWindow::MainWindow(QWidget *parent) :
     backgroundMusicProcess(nullptr), // 배경음악 프로세스 초기화
     volumeLevel(50),  // 볼륨 기본값 50%
     isCreatingGameWindow(false),
-    gameWindowCreationTimer(nullptr)
+    gameWindowCreationTimer(nullptr),
+    songGame(nullptr), // 노래 게임 인스턴스 추가
+    isCreatingSongGame(false) // 노래 게임 생성 플래그 추가
 {
     ui->setupUi(this);
     showFullScreen();  // 전체 화면으로 설정
@@ -648,7 +650,71 @@ void MainWindow::on_menuButton2_clicked()
 
 void MainWindow::on_menuButton3_clicked()
 {
-    QMessageBox::information(this, "Menu 3", "Menu 3 was selected!");
+    qDebug() << "Menu 3 clicked - Song Game";
+    
+    // 이미 노래 게임이 생성 중이면 무시
+    if (isCreatingSongGame) {
+        qDebug() << "Song game creation already in progress, ignoring click";
+        return;
+    }
+    
+    isCreatingSongGame = true;
+    
+    // 기존 노래 게임이 있다면 안전하게 정리
+    if (songGame) {
+        qDebug() << "Cleaning up existing song game...";
+        
+        // 시그널 연결 해제
+        songGame->disconnect();
+        
+        // 노래 게임 닫기
+        songGame->close();
+        
+        // 잠시 대기
+        QApplication::processEvents();
+        
+        // 메모리 정리
+        delete songGame;
+        songGame = nullptr;
+        
+        // 추가 대기
+        QApplication::processEvents();
+    }
+    
+    // 새 노래 게임 생성 (지연 실행)
+    QTimer::singleShot(100, this, [this]() {
+        try {
+            qDebug() << "Creating new song game...";
+            songGame = new SongGame(nullptr);
+            
+            if (songGame) {
+                // 현재 플레이어 이름 설정
+                if (playerDialog) {
+                    QString currentPlayer = playerDialog->getCurrentPlayer();
+                    songGame->setCurrentPlayer(currentPlayer);
+                }
+                
+                qDebug() << "Song game created successfully";
+            } else {
+                qDebug() << "Failed to create song game!";
+            }
+        } catch (const std::exception& e) {
+            qDebug() << "Exception creating song game:" << e.what();
+            if (songGame) {
+                delete songGame;
+                songGame = nullptr;
+            }
+        } catch (...) {
+            qDebug() << "Unknown exception creating song game";
+            if (songGame) {
+                delete songGame;
+                songGame = nullptr;
+            }
+        }
+        
+        // 생성 완료 후 플래그 리셋
+        isCreatingSongGame = false;
+    });
 }
 
 void MainWindow::showRankingDialog()
