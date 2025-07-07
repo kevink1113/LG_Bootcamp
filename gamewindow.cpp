@@ -428,7 +428,12 @@ void GameWindow::paintEvent(QPaintEvent *event)
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
         int h = obstacle.height();
-        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        int x;
+        if ( isMultiplayerMode && !isHost) {
+            x = obstacle.x();
+        } else {
+            x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        }
         int y = obstacle.y();
         if (!croppedPillar.isNull()) {
             QPixmap scaled;
