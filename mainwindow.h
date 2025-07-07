@@ -11,6 +11,7 @@
 #include "rankingdialog.h"
 #include "playerdialog.h"
 #include "songgame.h"
+#include "songselectiondialog.h"
 
 namespace Ui {
 class MainWindow;
@@ -46,6 +47,7 @@ private:
     QPushButton *playerButton;  // 플레이어 설정 버튼 추가
     RankingDialog *rankingDialog;
     PlayerDialog *playerDialog;
+    SongSelectionDialog *songSelectionDialog;
     QLabel *currentPlayerLabel;  // 현재 플레이어 이름 표시 라벨
     
     // 배경 음악 관련
