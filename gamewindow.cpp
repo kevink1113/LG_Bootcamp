@@ -1033,7 +1033,7 @@ void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
             qint64 bytesSent = udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
             
             if (bytesSent != datagram.size()) {
-                qDebug() << "Failed to send datagram to" << address.toString();
+                // qDebug() << "Failed to send datagram to" << address.toString();
             }
         }
     } catch (...) {
@@ -1385,7 +1385,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     lastGameStateUpdate = timestamp;
     
     // 장애물 동기화
-    obstacles.clear();
+    // obstacles.clear();
     QJsonArray obstaclesArray = gameState["obstacles"].toArray();
     for (const QJsonValue &value : obstaclesArray) {
         QJsonObject obstacleObj = value.toObject();
@@ -1399,7 +1399,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     }
     
     // 별 동기화
-    stars.clear();
+    // stars.clear();
     QJsonArray starsArray = gameState["stars"].toArray();
     for (const QJsonValue &value : starsArray) {
         QJsonObject starObj = value.toObject();
