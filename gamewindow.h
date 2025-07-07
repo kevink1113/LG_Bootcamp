@@ -175,7 +175,6 @@ private:
     static const int PLAYER_TIMEOUT = 3000; // 3초
     static const quint32 FIXED_SEED = 0xDEADBEEF; // 더 복잡한 고정된 랜덤 시드값
 
-    QPixmap playerImage; // 플레이어 이미지
 };
 
 #endif // GAMEWINDOW_H

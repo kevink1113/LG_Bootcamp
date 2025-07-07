@@ -1444,7 +1444,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     // 디버그 로그는 10번에 한 번만 출력
     static int logCount = 0;
     if (++logCount % 10 == 0) {
-        qDebug() "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
+        qDebug() << "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
     }
 
 }

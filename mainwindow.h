@@ -79,7 +79,6 @@ private:
     int titleLabelY; // Melody Game 제목 라벨 Y좌표
     QLabel *titleLabel;
 
-    void controlBackgroundMusicProcess(bool start);  // 배경 음악 제어
 
 };
 

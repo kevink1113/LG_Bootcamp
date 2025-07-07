@@ -21,10 +21,14 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
     gameWindow(nullptr),
+    songGame(nullptr), // 노래 게임 인스턴스 추가
     settingsDialog(nullptr),
     volumeSlider(nullptr),
     rankingButton(nullptr),
     playerButton(nullptr),
+    menuButton1(nullptr),
+    menuButton2(nullptr),
+    menuButton3(nullptr),
     rankingDialog(nullptr),
     playerDialog(nullptr),
     currentPlayerLabel(nullptr),
@@ -32,14 +36,11 @@ MainWindow::MainWindow(QWidget *parent) :
     backgroundMusicProcess(nullptr),
     volumeLevel(50),
     isCreatingGameWindow(false),
+    isCreatingSongGame(false), // 노래 게임 생성 플래그 추가
     gameWindowCreationTimer(nullptr),
-
     backgroundPixmap("/mnt/nfs/backgroundinit.png"),
     titleLabelY(130),
     titleLabel(nullptr) // 제목 라벨 멤버 초기화
-
-    songGame(nullptr), // 노래 게임 인스턴스 추가
-    isCreatingSongGame(false) // 노래 게임 생성 플래그 추가
 {
     ui->setupUi(this);
     showFullScreen();
