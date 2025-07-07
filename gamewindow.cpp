@@ -176,10 +176,10 @@ void GameWindow::setupGame()
             }
         }
         // client 에서 setupGame() 호출 시 장애물 타이머는 호스트에서만 시작하도록 설정
-        if (!obstacleTimer && (!isMultiplayerMode || isHost)) {
+        if (!obstacleTimer) {
             obstacleTimer = new QTimer(this);
-            if (obstacleTimer) {
-                connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
+            connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
+            if (!isMultiplayerMode || isHost) {
                 obstacleTimer->start(2000); // 2초마다 장애물 생성
                 qDebug() << "setupGame() : Obstacle timer started with interval 2000ms";
             }
