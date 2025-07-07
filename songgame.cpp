@@ -27,6 +27,7 @@ SongGame::SongGame(QWidget *parent)
     , currentPitch(0)
     , currentVolume(0.0f)
     , currentPlayerName("")
+    , lastSoundTime(0.0)
 {
     qDebug() << "SongGame constructor called";
     
@@ -74,8 +75,13 @@ SongGame::~SongGame()
     
     // 사운드 프로세스 정리
     if (soundProcess) {
-        soundProcess->terminate();
-        soundProcess->waitForFinished(1000);
+        if (soundProcess->state() == QProcess::Running) {
+            soundProcess->terminate();
+            if (!soundProcess->waitForFinished(1000)) {
+                soundProcess->kill();
+                soundProcess->waitForFinished(500);
+            }
+        }
         delete soundProcess;
         soundProcess = nullptr;
     }
@@ -178,7 +184,7 @@ void SongGame::loadSongData()
     double currentTime = 0.0;
     for (int i = 0; i < songNotes.size(); ++i) {
         songNotes[i].startTime = currentTime;
-        currentTime += songNotes[i].beat * 0.5; // 박자를 0.5초 단위로 변환
+        currentTime += songNotes[i].beat * 1.0; // 박자를 1초 단위로 변환
         songNotes[i].endTime = currentTime;
     }
 }
@@ -272,11 +278,19 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     if (gapY > maxGapY) gapY = maxGapY;
     
     // 위쪽 장애물
-    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    ObstacleData topObstacle;
+    topObstacle.rect = QRect(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    topObstacle.lyric = note.lyric;
+    topObstacle.note = note.note;
+    topObstacle.octave = note.octave;
     obstacles.append(topObstacle);
     
     // 아래쪽 장애물
-    QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
+    ObstacleData bottomObstacle;
+    bottomObstacle.rect = QRect(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
+    bottomObstacle.lyric = note.lyric;
+    bottomObstacle.note = note.note;
+    bottomObstacle.octave = note.octave;
     obstacles.append(bottomObstacle);
     
     qDebug() << "Created obstacle for note:" << note.note << note.octave << "at Y:" << gapY << "Lyric:" << note.lyric;
@@ -316,9 +330,9 @@ void SongGame::updateGame()
     // 장애물 이동 및 제거
     const int leftBoundary = 0;
     for (int i = obstacles.size() - 1; i >= 0; --i) {
-        QRect &obstacle = obstacles[i];
-        obstacle.translate(-OBSTACLE_SPEED, 0);
-        if (obstacle.x() + obstacle.width() < leftBoundary) {
+        ObstacleData &obstacle = obstacles[i];
+        obstacle.rect.translate(-OBSTACLE_SPEED, 0);
+        if (obstacle.rect.x() + obstacle.rect.width() < leftBoundary) {
             obstacles.removeAt(i);
         }
     }
@@ -326,15 +340,18 @@ void SongGame::updateGame()
     // 충돌 검사
     if (checkCollision()) {
         score -= PENALTY_PER_HIT;
-        if (score <= 0) {
+        if (score < 0) {
             score = 0;
-            gameOver();
-            return;
         }
-        playSound("/mnt/nfs/wav/scratch.wav");
+        
+        // 사운드 재생 제한 (0.5초마다 한 번씩만)
+        if (gameTime - lastSoundTime > 0.5) {
+            playSound("/mnt/nfs/wav/scratch.wav");
+            lastSoundTime = gameTime;
+        }
     }
     
-    // 노래가 끝났는지 확인
+    // 노래가 끝났는지 확인 (모든 노트가 처리되고 장애물이 화면에서 사라졌을 때)
     if (currentNoteIndex >= songNotes.size() && obstacles.isEmpty()) {
         gameOver();
         return;
@@ -411,11 +428,11 @@ void SongGame::paintEvent(QPaintEvent *event)
         pillarPixmap.load("/mnt/nfs/brick_pillar.png");
     }
     
-    const int REAL_PILLAR_WIDTH = 60;
-    for (const QRect &obstacle : obstacles) {
-        int h = obstacle.height();
-        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
-        int y = obstacle.y();
+    const int REAL_PILLAR_WIDTH = 100; // 실제 두께 증가
+    for (const ObstacleData &obstacle : obstacles) {
+        int h = obstacle.rect.height();
+        int x = obstacle.rect.x() + (obstacle.rect.width() - REAL_PILLAR_WIDTH) / 2;
+        int y = obstacle.rect.y();
         
         if (!pillarPixmap.isNull()) {
             QPixmap scaled = pillarPixmap.scaled(REAL_PILLAR_WIDTH, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
@@ -424,6 +441,25 @@ void SongGame::paintEvent(QPaintEvent *event)
             painter.setBrush(Qt::red);
             painter.setPen(Qt::NoPen);
             painter.drawRect(x, y, REAL_PILLAR_WIDTH, h);
+        }
+        
+        // 장애물에 가사 표시 (충분히 큰 장애물에만 표시)
+        if (h > 30) { // 더 작은 장애물에도 가사 표시
+            painter.setPen(Qt::white);
+            painter.setFont(QFont("Arial", 30, QFont::Bold));
+            
+            // 가사 텍스트
+            QString lyricText = obstacle.lyric;
+            if (!lyricText.isEmpty()) {
+                QRect textRect(x, y + h/2 - 15, REAL_PILLAR_WIDTH, 30);
+                painter.drawText(textRect, Qt::AlignCenter, lyricText);
+            }
+            
+            // 음정 정보 (작은 글씨로)
+            QString noteText = QString("%1%2").arg(obstacle.note).arg(obstacle.octave);
+            painter.setFont(QFont("Arial", 20));
+            QRect noteRect(x, y + h/2 + 15, REAL_PILLAR_WIDTH, 20);
+            painter.drawText(noteRect, Qt::AlignCenter, noteText);
         }
     }
     
@@ -464,8 +500,8 @@ void SongGame::paintEvent(QPaintEvent *event)
 
 bool SongGame::checkCollision()
 {
-    for (const QRect &obstacle : obstacles) {
-        if (player.intersects(obstacle)) {
+    for (const ObstacleData &obstacle : obstacles) {
+        if (player.intersects(obstacle.rect)) {
             return true;
         }
     }
@@ -486,7 +522,19 @@ void SongGame::gameOver()
     }
     
     // 게임 오버 메시지
-    QString message = QString("게임 종료!\n\n최종 점수: %1\n\n노래를 완주했습니다!").arg(score);
+    QString message;
+    if (score > 0) {
+        message = QString("🎵 노래 게임 완주! 🎵\n\n"
+                         "최종 점수: %1점\n"
+                         "애국가를 성공적으로 완주했습니다!\n\n"
+                         "축하합니다! 🎉").arg(score);
+    } else {
+        message = QString("게임 종료\n\n"
+                         "최종 점수: %1점\n"
+                         "애국가를 완주했지만 점수가 부족합니다.\n\n"
+                         "다시 도전해보세요! 💪").arg(score);
+    }
+    
     QMessageBox::information(this, "노래 게임 종료", message);
     
     // 메인 윈도우로 돌아가기
@@ -536,26 +584,47 @@ void SongGame::stopMicProcess()
 
 void SongGame::playSound(const QString &soundFile)
 {
+    // 기존 사운드 프로세스가 실행 중이면 강제 종료
     if (soundProcess) {
         if (soundProcess->state() == QProcess::Running) {
             soundProcess->terminate();
-            soundProcess->waitForFinished(100);
+            if (!soundProcess->waitForFinished(500)) {
+                soundProcess->kill();
+                soundProcess->waitForFinished(100);
+            }
         }
         delete soundProcess;
+        soundProcess = nullptr;
     }
     
+    // 새로운 사운드 프로세스 생성
     soundProcess = new QProcess(this);
+    soundProcess->setProcessChannelMode(QProcess::MergedChannels);
+    
+    // 프로세스가 종료될 때 자동으로 정리되도록 설정
+    connect(soundProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        Q_UNUSED(exitCode)
+        Q_UNUSED(exitStatus)
+        if (soundProcess) {
+            soundProcess->deleteLater();
+            soundProcess = nullptr;
+        }
+    });
+    
+    // aplay 실행
     soundProcess->start("./aplay", QStringList() << "-Dhw:0,0" << soundFile);
     
     if (!soundProcess->waitForStarted(300)) {
         qDebug() << "Failed to play sound. Trying absolute path...";
-        delete soundProcess;
         
-        soundProcess = new QProcess(this);
+        // 절대 경로로 시도
         soundProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << soundFile);
         
         if (!soundProcess->waitForStarted(300)) {
             qDebug() << "Failed to play sound with absolute path too.";
+            delete soundProcess;
+            soundProcess = nullptr;
         }
     }
 }

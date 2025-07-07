@@ -32,6 +32,13 @@ struct NoteData {
     double endTime;     // 끝 시간 (초)
 };
 
+struct ObstacleData {
+    QRect rect;
+    QString lyric;
+    QString note;
+    int octave;
+};
+
 class SongGame : public QMainWindow
 {
     Q_OBJECT
@@ -56,18 +63,18 @@ private slots:
 private:
     // 게임 상수
     static const int PLAYER_SIZE = 30;
-    static const int OBSTACLE_WIDTH = 80;
+    static const int OBSTACLE_WIDTH = 120; // 두께 증가
     static const int OBSTACLE_GAP = 150;
     static const int WINDOW_WIDTH = 1024;
     static const int WINDOW_HEIGHT = 600;
-    static const int PLAYER_SPEED = 5;
-    static const int OBSTACLE_SPEED = 3;
+    static const int PLAYER_SPEED = 10;
+    static const int OBSTACLE_SPEED = 10; // 속도 증가
     static const int INITIAL_SCORE = 100;
     static const int PENALTY_PER_HIT = 10;
 
     // 게임 상태
     QRect player;
-    QVector<QRect> obstacles;
+    QVector<ObstacleData> obstacles;
     QVector<NoteData> songNotes;
     QTimer *gameTimer;
     QTimer *pitchTimer;
@@ -86,6 +93,7 @@ private:
     int currentPitch;
     float currentVolume;
     QString currentPlayerName;
+    double lastSoundTime; // 마지막 사운드 재생 시간
     
     // 노래 데이터
     void setupGame();
