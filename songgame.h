@@ -22,6 +22,7 @@
 #include <QApplication>
 #include <QDebug>
 #include <cmath>
+#include <QSet>
 
 struct NoteData {
     QString lyric;      // 가사
@@ -70,11 +71,12 @@ private:
     static const int PLAYER_SPEED = 10;
     static const int OBSTACLE_SPEED = 10; // 속도 증가
     static const int INITIAL_SCORE = 100;
-    static const int PENALTY_PER_HIT = 10;
+    static const int PENALTY_PER_HIT = 5;
 
     // 게임 상태
     QRect player;
     QVector<ObstacleData> obstacles;
+    QSet<int> collidedObstacles; // 충돌한 장애물 추적
     QVector<NoteData> songNotes;
     QTimer *gameTimer;
     QTimer *pitchTimer;
@@ -99,7 +101,6 @@ private:
     void setupGame();
     void loadSongData();
     void createObstacleFromNote(const NoteData &note);
-    bool checkCollision();
     void gameOver();
     void startMicProcess();
     void stopMicProcess();

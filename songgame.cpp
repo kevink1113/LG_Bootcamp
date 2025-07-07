@@ -184,7 +184,7 @@ void SongGame::loadSongData()
     double currentTime = 0.0;
     for (int i = 0; i < songNotes.size(); ++i) {
         songNotes[i].startTime = currentTime;
-        currentTime += songNotes[i].beat * 1.0; // 박자를 1초 단위로 변환
+        currentTime += songNotes[i].beat * 0.3; // 박자를 0.3초 단위로 변환 (더 빠른 간격)
         songNotes[i].endTime = currentTime;
     }
 }
@@ -333,12 +333,23 @@ void SongGame::updateGame()
         ObstacleData &obstacle = obstacles[i];
         obstacle.rect.translate(-OBSTACLE_SPEED, 0);
         if (obstacle.rect.x() + obstacle.rect.width() < leftBoundary) {
+            // 장애물이 화면에서 사라질 때 충돌 기록에서 제거
+            collidedObstacles.remove(i);
             obstacles.removeAt(i);
         }
     }
     
-    // 충돌 검사
-    if (checkCollision()) {
+    // 충돌 검사 (한 장애물에 한 번만)
+    bool collisionOccurred = false;
+    for (int i = 0; i < obstacles.size(); ++i) {
+        if (!collidedObstacles.contains(i) && player.intersects(obstacles[i].rect)) {
+            collidedObstacles.insert(i);
+            collisionOccurred = true;
+            break; // 한 번에 하나의 충돌만 처리
+        }
+    }
+    
+    if (collisionOccurred) {
         score -= PENALTY_PER_HIT;
         if (score < 0) {
             score = 0;
@@ -498,15 +509,15 @@ void SongGame::paintEvent(QPaintEvent *event)
     }
 }
 
-bool SongGame::checkCollision()
-{
-    for (const ObstacleData &obstacle : obstacles) {
-        if (player.intersects(obstacle.rect)) {
-            return true;
-        }
-    }
-    return false;
-}
+// bool SongGame::checkCollision()
+// {
+//     for (const ObstacleData &obstacle : obstacles) {
+//         if (player.intersects(obstacle.rect)) {
+//             return true;
+//         }
+//     }
+//     return false;
+// }
 
 void SongGame::gameOver()
 {
