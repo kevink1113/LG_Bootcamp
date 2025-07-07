@@ -33,9 +33,13 @@ MainWindow::MainWindow(QWidget *parent) :
     volumeLevel(50),
     isCreatingGameWindow(false),
     gameWindowCreationTimer(nullptr),
+
     backgroundPixmap("/mnt/nfs/backgroundinit.png"),
     titleLabelY(130),
     titleLabel(nullptr) // 제목 라벨 멤버 초기화
+
+    songGame(nullptr), // 노래 게임 인스턴스 추가
+    isCreatingSongGame(false) // 노래 게임 생성 플래그 추가
 {
     ui->setupUi(this);
     showFullScreen();
@@ -598,13 +602,38 @@ void MainWindow::on_menuButton1_clicked()
 {
     qDebug() << "Menu 1 clicked - Single Player";
     
+
     // 기존 게임 윈도우가 있다면 안전하게 정리
     if (gameWindow) {
         qDebug() << "Cleaning up existing game window...";
         gameWindow->disconnect();
+
+    // 이미 게임 윈도우가 생성 중이면 무시
+    if (isCreatingGameWindow) {
+        qDebug() << "Game window creation already in progress, ignoring click";
+        return;
+    }
+    
+    isCreatingGameWindow = true;
+    
+    // 기존 게임 윈도우가 있다면 안전하게 정리
+    if (gameWindow) {
+        qDebug() << "Cleaning up existing game window...";
+        
+        // 시그널 연결 해제
+        gameWindow->disconnect();
+        
+        // 게임 윈도우 닫기
+
         gameWindow->close();
-        gameWindow->deleteLater();
+        
+        // 잠시 대기
+        QApplication::processEvents();
+        
+        // 메모리 정리
+        delete gameWindow;
         gameWindow = nullptr;
+
         QApplication::processEvents();
     }
     
@@ -657,6 +686,47 @@ void MainWindow::on_menuButton1_clicked()
             gameWindow = nullptr;
         }
     }
+
+        
+        // 추가 대기
+        QApplication::processEvents();
+    }
+    
+    // 새 게임 윈도우 생성 (지연 실행)
+    QTimer::singleShot(100, this, [this]() {
+        try {
+            qDebug() << "Creating new single player game window...";
+            gameWindow = new GameWindow(nullptr, false); // 싱글플레이어 모드
+            
+            if (gameWindow) {
+                // 현재 플레이어 이름 설정
+                if (playerDialog) {
+                    QString currentPlayer = playerDialog->getCurrentPlayer();
+                    gameWindow->setCurrentPlayer(currentPlayer);
+                }
+                
+                qDebug() << "Single player game window created successfully";
+            } else {
+                qDebug() << "Failed to create game window!";
+            }
+        } catch (const std::exception& e) {
+            qDebug() << "Exception creating game window:" << e.what();
+            if (gameWindow) {
+                delete gameWindow;
+                gameWindow = nullptr;
+            }
+        } catch (...) {
+            qDebug() << "Unknown exception creating game window";
+            if (gameWindow) {
+                delete gameWindow;
+                gameWindow = nullptr;
+            }
+        }
+        
+        // 생성 완료 후 플래그 리셋
+        isCreatingGameWindow = false;
+    });
+
 }
 
 void MainWindow::cleanupGameWindow()
@@ -752,13 +822,38 @@ void MainWindow::on_menuButton2_clicked()
 {
     qDebug() << "Menu 2 clicked - Multiplayer";
     
+
     // 기존 게임 윈도우가 있다면 안전하게 정리
     if (gameWindow) {
         qDebug() << "Cleaning up existing game window...";
         gameWindow->disconnect();
+
+    // 이미 게임 윈도우가 생성 중이면 무시
+    if (isCreatingGameWindow) {
+        qDebug() << "Game window creation already in progress, ignoring click";
+        return;
+    }
+    
+    isCreatingGameWindow = true;
+    
+    // 기존 게임 윈도우가 있다면 안전하게 정리
+    if (gameWindow) {
+        qDebug() << "Cleaning up existing game window...";
+        
+        // 시그널 연결 해제
+        gameWindow->disconnect();
+        
+        // 게임 윈도우 닫기
+
         gameWindow->close();
-        gameWindow->deleteLater();
+        
+        // 잠시 대기
+        QApplication::processEvents();
+        
+        // 메모리 정리
+        delete gameWindow;
         gameWindow = nullptr;
+
         QApplication::processEvents();
     }
     
@@ -811,11 +906,116 @@ void MainWindow::on_menuButton2_clicked()
             gameWindow = nullptr;
         }
     }
+
+        
+        // 추가 대기
+        QApplication::processEvents();
+    }
+    
+    // 새 게임 윈도우 생성 (지연 실행)
+    QTimer::singleShot(100, this, [this]() {
+        try {
+            qDebug() << "Creating new multiplayer game window...";
+            gameWindow = new GameWindow(nullptr, true); // 멀티플레이어 모드
+            
+            if (gameWindow) {
+                // 현재 플레이어 이름 설정
+                if (playerDialog) {
+                    QString currentPlayer = playerDialog->getCurrentPlayer();
+                    gameWindow->setCurrentPlayer(currentPlayer);
+                }
+                
+                qDebug() << "Multiplayer game window created successfully";
+            } else {
+                qDebug() << "Failed to create game window!";
+            }
+        } catch (const std::exception& e) {
+            qDebug() << "Exception creating game window:" << e.what();
+            if (gameWindow) {
+                delete gameWindow;
+                gameWindow = nullptr;
+            }
+        } catch (...) {
+            qDebug() << "Unknown exception creating game window";
+            if (gameWindow) {
+                delete gameWindow;
+                gameWindow = nullptr;
+            }
+        }
+        
+        // 생성 완료 후 플래그 리셋
+        isCreatingGameWindow = false;
+    });
+
 }
 
 void MainWindow::on_menuButton3_clicked()
 {
-    QMessageBox::information(this, "Menu 3", "Menu 3 was selected!");
+    qDebug() << "Menu 3 clicked - Song Game";
+    
+    // 이미 노래 게임이 생성 중이면 무시
+    if (isCreatingSongGame) {
+        qDebug() << "Song game creation already in progress, ignoring click";
+        return;
+    }
+    
+    isCreatingSongGame = true;
+    
+    // 기존 노래 게임이 있다면 안전하게 정리
+    if (songGame) {
+        qDebug() << "Cleaning up existing song game...";
+        
+        // 시그널 연결 해제
+        songGame->disconnect();
+        
+        // 노래 게임 닫기
+        songGame->close();
+        
+        // 잠시 대기
+        QApplication::processEvents();
+        
+        // 메모리 정리
+        delete songGame;
+        songGame = nullptr;
+        
+        // 추가 대기
+        QApplication::processEvents();
+    }
+    
+    // 새 노래 게임 생성 (지연 실행)
+    QTimer::singleShot(100, this, [this]() {
+        try {
+            qDebug() << "Creating new song game...";
+            songGame = new SongGame(nullptr);
+            
+            if (songGame) {
+                // 현재 플레이어 이름 설정
+                if (playerDialog) {
+                    QString currentPlayer = playerDialog->getCurrentPlayer();
+                    songGame->setCurrentPlayer(currentPlayer);
+                }
+                
+                qDebug() << "Song game created successfully";
+            } else {
+                qDebug() << "Failed to create song game!";
+            }
+        } catch (const std::exception& e) {
+            qDebug() << "Exception creating song game:" << e.what();
+            if (songGame) {
+                delete songGame;
+                songGame = nullptr;
+            }
+        } catch (...) {
+            qDebug() << "Unknown exception creating song game";
+            if (songGame) {
+                delete songGame;
+                songGame = nullptr;
+            }
+        }
+        
+        // 생성 완료 후 플래그 리셋
+        isCreatingSongGame = false;
+    });
 }
 
 void MainWindow::showRankingDialog()

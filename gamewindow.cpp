@@ -47,7 +47,8 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , moveDown(false)
     , currentPitch(0)
     , currentVolume(0.0f)
-    , targetY(WINDOW_HEIGHT/2 - PLAYER_SIZE/2)
+    , targetY(300)  // 기본값으로 설정
+
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
     
@@ -55,7 +56,7 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     hide();
     
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
-    QTimer::singleShot(50, this, &GameWindow::setupGame);
+    QTimer::singleShot(100, this, &GameWindow::setupGame);
 }
 
 
@@ -66,12 +67,19 @@ GameWindow::~GameWindow()
     // 게임 상태 정지
     gameRunning = false;
     
-    // 타이머들 먼저 정지 및 정리
+
+    // 모든 시그널 연결 해제
+    disconnect();
+    
+    // 타이머들 먼저 정지 및 정리 (nullptr 체크 추가)
+
     if (gameTimer) {
         qDebug() << "Deleting gameTimer...";
         gameTimer->stop();
         gameTimer->disconnect();
-        gameTimer->deleteLater();
+
+        delete gameTimer;
+
         gameTimer = nullptr;
         qDebug() << "gameTimer deleted.";
     }
@@ -79,7 +87,9 @@ GameWindow::~GameWindow()
         qDebug() << "Deleting obstacleTimer...";
         obstacleTimer->stop();
         obstacleTimer->disconnect();
-        obstacleTimer->deleteLater();
+
+        delete obstacleTimer;
+
         obstacleTimer = nullptr;
         qDebug() << "obstacleTimer deleted.";
     }
@@ -87,7 +97,9 @@ GameWindow::~GameWindow()
         qDebug() << "Deleting pitchTimer...";
         pitchTimer->stop();
         pitchTimer->disconnect();
-        pitchTimer->deleteLater();
+
+        delete pitchTimer;
+
         pitchTimer = nullptr;
         qDebug() << "pitchTimer deleted.";
     }
@@ -95,7 +107,9 @@ GameWindow::~GameWindow()
         qDebug() << "Deleting countdownTimer...";
         countdownTimer->stop();
         countdownTimer->disconnect();
-        countdownTimer->deleteLater();
+
+        delete countdownTimer;
+
         countdownTimer = nullptr;
         qDebug() << "countdownTimer deleted.";
     }
@@ -114,6 +128,18 @@ GameWindow::~GameWindow()
         cleanupTimer->deleteLater();
         cleanupTimer = nullptr;
         qDebug() << "cleanupTimer deleted.";
+    }
+    if (broadcastTimer) {
+        broadcastTimer->stop();
+        broadcastTimer->disconnect();
+        delete broadcastTimer;
+        broadcastTimer = nullptr;
+    }
+    if (cleanupTimer) {
+        cleanupTimer->stop();
+        cleanupTimer->disconnect();
+        delete cleanupTimer;
+        cleanupTimer = nullptr;
     }
     
     // 멀티플레이어 정리
@@ -136,11 +162,20 @@ GameWindow::~GameWindow()
         qDebug() << "soundProcess deleted.";
     }
     
-    // 버튼 정리
+    // 사운드 프로세스 정리 (nullptr 체크 추가)
+    if (soundProcess) {
+        soundProcess->terminate();
+        soundProcess->waitForFinished(1000);
+        delete soundProcess;
+        soundProcess = nullptr;
+    }
+    
+    // 버튼 정리 (nullptr 체크 추가)
     if (backButton) {
-        qDebug() << "Deleting backButton...";
+
         backButton->disconnect();
-        backButton->deleteLater();
+        delete backButton;
+
         backButton = nullptr;
         qDebug() << "backButton deleted.";
     }
@@ -155,6 +190,7 @@ GameWindow::~GameWindow()
 void GameWindow::setupGame()
 {
     qDebug() << "Setting up game window...";
+
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
@@ -196,64 +232,122 @@ void GameWindow::setupGame()
     score = 0;
     obstacles.clear();
     stars.clear();
+
     
-    // 별 모양 초기화 - 둥근 모서리와 부드러운 곡선 (캐싱)
-    if (starPath.isEmpty()) {
-        starPath = QPainterPath();
-        const qreal angleStep = M_PI / STAR_POINTS;
-        const qreal controlDist = CORNER_SMOOTHNESS;
-        for (int i = 0; i < STAR_POINTS * 2; ++i) {
-            qreal radius = (i % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
-            qreal angle = i * angleStep;
-            qreal nextAngle = (i + 1) * angleStep;
-            QPointF point(radius * sin(angle), -radius * cos(angle));
-            qreal nextRadius = ((i + 1) % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
-            QPointF nextPoint(nextRadius * sin(nextAngle), -nextRadius * cos(nextAngle));
-            if (i == 0) starPath.moveTo(point);
-            QPointF ctrl1 = point + QPointF(radius * controlDist * cos(angle), radius * controlDist * sin(angle));
-            QPointF ctrl2 = nextPoint - QPointF(nextRadius * controlDist * cos(nextAngle), nextRadius * controlDist * sin(nextAngle));
-            starPath.cubicTo(ctrl1, ctrl2, nextPoint);
+    try {
+        // 1. 전체화면/geometry/flags를 show() 전에 설정
+        QScreen *screen = QApplication::primaryScreen();
+        if (!screen) {
+            qDebug() << "No primary screen found!";
+            return;
         }
-        starPath.closeSubpath();
-    }
-    
-    // 마이크 프로세스 시작
-    startMicProcess();
-    
-
-    // 뒤로가기 버튼 설정 (중복 생성 방지)
-    if (!backButton) {
-        setupBackButton();
-    }
-    
-    // player2.png 미리 스케일링 (성능 최적화)
-    static QPixmap cachedPlayerPixmap;
-    const int PLAYER_DISPLAY_SIZE = PLAYER_SIZE * 3; // 기존보다 3배 크게
-    if (cachedPlayerPixmap.isNull()) {
-        QPixmap rawPixmap;
-        if (rawPixmap.load("/mnt/nfs/player2.png")) {
-            cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            qDebug() << "Player image loaded and cached from /mnt/nfs/player2.png (3x size)";
-        } else {
-            qDebug() << "Failed to load player image from /mnt/nfs/player2.png";
+        
+        QRect screenGeometry = screen->geometry();
+        setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+        setGeometry(screenGeometry);
+        setWindowState(Qt::WindowFullScreen);
+        
+        // 2. show()는 마지막에 호출
+        show();
+        QCoreApplication::processEvents(); // 즉시 화면 갱신
+        
+        // 3. raise/activateWindow는 show() 이후
+        raise();
+        activateWindow();
+        
+        qDebug() << "GameWindow shown. Size:" << size();
+        
+        // 플레이어 위치 초기화
+        player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
+        targetY = height()/2 - PLAYER_SIZE/2;
+        
+        // 타이머 생성 및 연결
+        if (!gameTimer) {
+            gameTimer = new QTimer(this);
+            if (gameTimer) {
+                connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
+                gameTimer->start(16); // 약 60 FPS
+            }
         }
+        
+        if (!obstacleTimer) {
+            obstacleTimer = new QTimer(this);
+            if (obstacleTimer) {
+                connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
+                obstacleTimer->start(2000); // 2초마다 장애물 생성
+            }
+        }
+        
+        if (!pitchTimer) {
+            pitchTimer = new QTimer(this);
+            if (pitchTimer) {
+                connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
+                pitchTimer->start(50); // 20Hz로 피치 읽기
+            }
+        }
+        
+        // 게임 상태 초기화
+        gameRunning = true;
+        score = 0;
+        obstacles.clear();
+        stars.clear();
+        
+        // 별 모양 초기화 - 둥근 모서리와 부드러운 곡선 (캐싱)
+        if (starPath.isEmpty()) {
+            starPath = QPainterPath();
+            const qreal angleStep = M_PI / STAR_POINTS;
+            const qreal controlDist = CORNER_SMOOTHNESS;
+            for (int i = 0; i < STAR_POINTS * 2; ++i) {
+                qreal radius = (i % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+                qreal angle = i * angleStep;
+                qreal nextAngle = (i + 1) * angleStep;
+                QPointF point(radius * sin(angle), -radius * cos(angle));
+                qreal nextRadius = ((i + 1) % 2 == 0) ? starSize * OUTER_RADIUS / 2 : starSize * INNER_RADIUS / 2;
+                QPointF nextPoint(nextRadius * sin(nextAngle), -nextRadius * cos(nextAngle));
+                if (i == 0) starPath.moveTo(point);
+                QPointF ctrl1 = point + QPointF(radius * controlDist * cos(angle), radius * controlDist * sin(angle));
+                QPointF ctrl2 = nextPoint - QPointF(nextRadius * controlDist * cos(nextAngle), nextRadius * controlDist * sin(nextAngle));
+                starPath.cubicTo(ctrl1, ctrl2, nextPoint);
+            }
+            starPath.closeSubpath();
+        }
+        
+        // 마이크 프로세스 시작
+        startMicProcess();
+        
+        // 뒤로가기 버튼 설정
+        if (!backButton) {
+            setupBackButton();
+        }
+        
+        // player2.png 미리 스케일링 (성능 최적화)
+        static QPixmap cachedPlayerPixmap;
+        const int PLAYER_DISPLAY_SIZE = PLAYER_SIZE * 3; // 기존보다 3배 크게
+        if (cachedPlayerPixmap.isNull()) {
+            QPixmap rawPixmap;
+            if (rawPixmap.load("/mnt/nfs/player2.png")) {
+                cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                qDebug() << "Player image loaded and cached from /mnt/nfs/player2.png (3x size)";
+            } else {
+                qDebug() << "Failed to load player image from /mnt/nfs/player2.png";
+            }
+        }
+        playerImage = cachedPlayerPixmap;
+        
+        // 멀티플레이어 모드인 경우 네트워크 초기화
+        if (isMultiplayerMode) {
+            startMultiplayer();
+            startLobby();
+        }
+        
+        // 초기 화면 그리기
+        update();
+        
+    } catch (const std::exception& e) {
+        qDebug() << "Exception in setupGame:" << e.what();
+    } catch (...) {
+        qDebug() << "Unknown exception in setupGame";
     }
-    playerImage = cachedPlayerPixmap;
-
-    // 멀티플레이어 모드인 경우 네트워크 초기화
-    if (isMultiplayerMode) {
-        startMultiplayer();
-        startLobby();
-    }
-    
-    // 뒤로가기 버튼 설정 (멀티플레이어 모드에서만)
-    if (isMultiplayerMode) {
-        setupBackButton();
-    }
-
-    
-    // 초기 화면 그리기
-    update();
 }
 
 void GameWindow::startMicProcess()
@@ -305,7 +399,7 @@ void GameWindow::stopMicProcess()
         if (!micProcess->waitForFinished(3000)) {
             micProcess->kill();
         }
-        micProcess->deleteLater();
+        delete micProcess;
         micProcess = nullptr;
         qDebug() << "[stopMicProcess] micProcess deleted.";
     }
@@ -609,6 +703,7 @@ void GameWindow::updateGame()
         }
     }
     
+
     // 멀티플레이어 모드에서 네트워크 업데이트
     if (isMultiplayerMode) {
         updatePlayerPosition(player.x(), player.y(), score, false);
@@ -851,13 +946,7 @@ void GameWindow::goBackToMainWindow()
     // 게임 상태 정지
     gameRunning = false;
     
-    // 멀티플레이어 정리
-    stopMultiplayer();
-    
-    // 마이크 프로세스 정리
-    stopMicProcess();
-    
-    // 타이머들 정지
+    // 모든 타이머 정지
     if (gameTimer) {
         gameTimer->stop();
     }
@@ -871,10 +960,7 @@ void GameWindow::goBackToMainWindow()
         countdownTimer->stop();
     }
     
-    // 메인 윈도우로 돌아가라는 시그널 발생
-    emit requestMainWindow();
-    
-    // 게임 창 닫기
+    // 게임 창 닫기 (시그널 발생 없이)
     close();
 }
 
@@ -884,7 +970,9 @@ void GameWindow::setCurrentPlayer(const QString &playerName)
     currentPlayerName = playerName;
 }
 
+
 //GameWindow::~GameWindow() {
+
     // Clean up resources if needed
     // All child QObjects with 'this' as parent are deleted automatically,
     // but we ensure any manual allocations are cleaned up.
@@ -1356,7 +1444,7 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     // 디버그 로그는 10번에 한 번만 출력
     static int logCount = 0;
     if (++logCount % 10 == 0) {
-        qDebug() << "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
+        qDebug() "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
     }
 
 }

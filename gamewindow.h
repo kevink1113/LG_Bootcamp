@@ -157,7 +157,14 @@ private:
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
 
+
     static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
+
+
+    QPixmap playerImage; // 플레이어 이미지
+
+//    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
+
     static const int WINDOW_WIDTH = 800;  // 윈도우 너비
     static const int WINDOW_HEIGHT = 600;  // 윈도우 높이
     
