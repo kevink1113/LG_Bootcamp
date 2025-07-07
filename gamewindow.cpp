@@ -428,7 +428,12 @@ void GameWindow::paintEvent(QPaintEvent *event)
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
         int h = obstacle.height();
-        int x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        int x;
+        if ( isMultiplayerMode && !isHost) {
+            x = obstacle.x();
+        } else {
+            x = obstacle.x() + (obstacle.width() - REAL_PILLAR_WIDTH) / 2;
+        }
         int y = obstacle.y();
         if (!croppedPillar.isNull()) {
             QPixmap scaled;
@@ -1026,7 +1031,7 @@ void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
             qint64 bytesSent = udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
             
             if (bytesSent != datagram.size()) {
-                qDebug() << "Failed to send datagram to" << address.toString();
+                //qDebug() << "Failed to send datagram to" << address.toString();
             }
         }
     } catch (...) {
