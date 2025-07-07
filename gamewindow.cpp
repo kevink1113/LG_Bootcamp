@@ -226,7 +226,7 @@ void GameWindow::setupGame()
         gameTimer = new QTimer(this);
         connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
     }
-    gameTimer->start(16); // 약 60 FPS
+    gameTimer->start(33); // 약 30 FPS (성능 최적화)
     
     if (!obstacleTimer) {
         obstacleTimer = new QTimer(this);
@@ -245,7 +245,7 @@ void GameWindow::setupGame()
         pitchTimer = new QTimer(this);
         connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
     }
-    pitchTimer->start(50); // 20Hz로 피치 읽기
+    pitchTimer->start(100); // 10Hz로 피치 읽기 (성능 최적화)
     
     gameRunning = true;
     score = 0;
@@ -285,7 +285,7 @@ void GameWindow::setupGame()
             gameTimer = new QTimer(this);
             if (gameTimer) {
                 connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
-                gameTimer->start(16); // 약 60 FPS
+                gameTimer->start(33); // 약 30 FPS (성능 최적화)
             }
         }
         
@@ -301,7 +301,7 @@ void GameWindow::setupGame()
             pitchTimer = new QTimer(this);
             if (pitchTimer) {
                 connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
-                pitchTimer->start(50); // 20Hz로 피치 읽기
+                pitchTimer->start(100); // 10Hz로 피치 읽기 (성능 최적화)
             }
         }
         
@@ -469,7 +469,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
+    // 성능 최적화: Antialiasing 제거
     // 배경 그리기 (이미지 최적화 예시)
     static QPixmap bgPixmap;
     if (bgPixmap.isNull()) {
@@ -535,6 +535,8 @@ void GameWindow::paintEvent(QPaintEvent *event)
             painter.setPen(Qt::NoPen);
             painter.drawRect(obstacle);
         }
+        
+
     }
     
     // 플레이어 그리기 (이미지)
@@ -608,12 +610,12 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.drawText(10, 25, QString("Multiplayer Mode - Players: %1").arg(otherPlayers.size() + 1));
     }
     
-    // 점수와 피치 정보 표시 (오른쪽 상단)
-
+    // 점수와 플레이어 정보 표시 (오른쪽 상단)
     painter.setPen(Qt::white);
+    painter.setFont(QFont("Arial", 12, QFont::Bold));
     
-    // 텍스트 위치 계산 (매 프레임마다 계산하지 않도록 최적화 가능)
-    static QFontMetrics fm(infoFont);
+    // 텍스트 위치 계산
+    QFontMetrics fm(painter.font());
     const int rightMargin = 10;
     const int topMargin = 25;
     const int lineSpacing = 20;
@@ -621,19 +623,17 @@ void GameWindow::paintEvent(QPaintEvent *event)
     // 필요한 문자열만 생성
     QString scoreText = QString("Score: %1").arg(score);
     QString playerText = QString("Player: %1").arg(currentPlayerName.isEmpty() ? "No Player" : currentPlayerName);
+    QString pitchText = QString("Pitch: %1").arg(currentPitch);
+    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
     
     // 오른쪽 정렬 텍스트
     int rightEdge = width() - rightMargin;
     painter.drawText(rightEdge - fm.horizontalAdvance(scoreText), topMargin, scoreText);
-    painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
-    
-    // 디버그 정보는 조건부로 표시 (성능에 영향 줄이기)
-#ifdef QT_DEBUG
-    QString pitchText = QString("Pitch: %1").arg(currentPitch);
-    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
     painter.drawText(rightEdge - fm.horizontalAdvance(pitchText), topMargin + lineSpacing, pitchText);
     painter.drawText(rightEdge - fm.horizontalAdvance(volumeText), topMargin + lineSpacing * 2, volumeText);
-#endif
+    painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
+    
+
 }
 
 void GameWindow::updateGame()
@@ -715,27 +715,36 @@ void GameWindow::updateGame()
         return;
     }
     
-    // 비활성 별 정리 (필요할 때만 처리)
-    const int MAX_STARS = 25;  // 최대 별 개수
-    if (stars.size() > MAX_STARS) {
-        for (int i = stars.size() - 1; i >= 0; --i) {
-            if (!stars[i].active) {
-                stars.removeAt(i);
+    // 비활성 별 정리 (성능 최적화: 5초마다만 처리)
+    static int cleanupCounter = 0;
+    cleanupCounter++;
+    if (cleanupCounter >= 150) { // 30FPS 기준 5초마다
+        cleanupCounter = 0;
+        const int MAX_STARS = 25;  // 최대 별 개수
+        if (stars.size() > MAX_STARS) {
+            for (int i = stars.size() - 1; i >= 0; --i) {
+                if (!stars[i].active) {
+                    stars.removeAt(i);
+                }
             }
         }
     }
     
 
-    // 멀티플레이어 모드에서 네트워크 업데이트
+    // 멀티플레이어 모드에서 네트워크 업데이트 (성능 최적화: 2초마다)
     if (isMultiplayerMode) {
-        updatePlayerPosition(player.x(), player.y(), score, false);
-        
-        // 호스트가 주기적으로 게임 상태 전송 (2초마다)
         static int frameCount = 0;
-        if (isHost && isGameStarted && frameCount % 120 == 0) { // 120프레임마다 (약 2초)
-            sendGameState();
-        }
         frameCount++;
+        
+        // 2초마다만 업데이트 (30FPS 기준 60프레임)
+        if (frameCount % 60 == 0) {
+            updatePlayerPosition(player.x(), player.y(), score, false);
+            
+            // 호스트가 주기적으로 게임 상태 전송
+            if (isHost && isGameStarted) {
+                sendGameState();
+            }
+        }
     }
     
     // 점수에 따른 장애물 생성 빈도 조절 (최적화: 10점마다 체크)
@@ -810,8 +819,19 @@ void GameWindow::spawnObstacles()
 
 bool GameWindow::checkCollision()
 {
-    for (const QRect &obstacle : obstacles) {
-        if (player.intersects(obstacle)) {
+    for (int i = 0; i < obstacles.size(); i += 2) {
+        // 상단 장애물 (아래쪽 부분만 충돌 감지 줄임)
+        QRect topObstacle = obstacles[i];
+        // 장애물 높이에 비례해서 여유 계산 (40x81 기준 7픽셀)
+        int topMargin = qRound(topObstacle.height() * 7.0 / 81.0);
+        QRect topCollisionRect = topObstacle.adjusted(0, 0, 0, -topMargin);
+        
+        // 하단 장애물 (위쪽 부분만 충돌 감지 줄임)
+        QRect bottomObstacle = obstacles[i + 1];
+        int bottomMargin = qRound(bottomObstacle.height() * 7.0 / 81.0);
+        QRect bottomCollisionRect = bottomObstacle.adjusted(0, bottomMargin, 0, 0);
+        
+        if (player.intersects(topCollisionRect) || player.intersects(bottomCollisionRect)) {
             // 충돌 소리 재생
             playSound("/mnt/nfs/wav/scratch.wav");
             return true;
