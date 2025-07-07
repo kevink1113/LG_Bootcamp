@@ -1274,14 +1274,14 @@ void GameWindow::startGameCountdown()
         }
         
         // 호스트가 첫 번째 장애물 생성
-        if (isHost) {
-            // 호스트의 obstacleTimer 시작
-            if (obstacleTimer && !obstacleTimer->isActive()) {
-                obstacleTimer->start(2000);
-            }
-            spawnObstacles();
-            qDebug() << "startGameCountdowon() : Obstacle timer started with interval 2000ms for HOST.";
-        }
+        // if (isHost) {
+        //     // 호스트의 obstacleTimer 시작
+        //     if (obstacleTimer && !obstacleTimer->isActive()) {
+        //         obstacleTimer->start(2000);
+        //     }
+        //     spawnObstacles();
+        //     qDebug() << "startGameCountdowon() : Obstacle timer started with interval 2000ms for HOST.";
+        // }
         
         // 클라이언트는 obstacleTimer를 시작하지 않음 (호스트의 게임 상태를 받아서 동기화)
     }
