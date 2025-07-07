@@ -1331,45 +1331,27 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     if (timestamp <= lastGameStateUpdate) return; // 오래된 상태는 무시
     
     lastGameStateUpdate = timestamp;
-
-    // 장애물 상대 좌표 계산
-    QList<QRect> previousObstacles = obstacles; // 이전 장애물 상태 저장
+    
+    // 장애물 동기화
     obstacles.clear();
     QJsonArray obstaclesArray = gameState["obstacles"].toArray();
-    for (int i = 0; i < obstaclesArray.size(); ++i) {
-        QJsonObject obstacleObj = obstaclesArray[i].toObject();
+    for (const QJsonValue &value : obstaclesArray) {
+        QJsonObject obstacleObj = value.toObject();
         QRect obstacle(
             obstacleObj["x"].toInt(),
             obstacleObj["y"].toInt(),
             obstacleObj["width"].toInt(),
             obstacleObj["height"].toInt()
         );
-        
-        // 상대 좌표 계산
-        if (i < previousObstacles.size()) {
-            int dx = obstacle.x() - previousObstacles[i].x();
-            int dy = obstacle.y() - previousObstacles[i].y();
-            obstacle.translate(dx, dy); // 상대 이동 적용
-        }
-        
         obstacles.append(obstacle);
     }
-
-    // 별 상대 좌표 계산
-    QVector<QPointF> previousStars = starPositions; // 이전 별 상태 저장
+    
+    // 별 동기화
     stars.clear();
     QJsonArray starsArray = gameState["stars"].toArray();
-    for (int i = 0; i < starsArray.size(); ++i) {
-        QJsonObject starObj = starsArray[i].toObject();
+    for (const QJsonValue &value : starsArray) {
+        QJsonObject starObj = value.toObject();
         QPointF pos(starObj["x"].toDouble(), starObj["y"].toDouble());
-        
-        // 상대 좌표 계산
-        if (i < previousStars.size()) {
-            qreal dx = pos.x() - previousStars[i].x();
-            qreal dy = pos.y() - previousStars[i].y();
-            pos += QPointF(dx, dy); // 상대 이동 적용
-        }
-        
         stars.append(Star(pos));
     }
     
@@ -1378,4 +1360,5 @@ void GameWindow::processGameState(const QJsonObject &gameState)
     if (++logCount % 10 == 0) {
         qDebug() << "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
     }
+
 }
