@@ -603,15 +603,18 @@ void MainWindow::on_menuButton1_clicked()
 {
     qDebug() << "Menu 1 clicked - Single Player";
     
-
-    // 기존 게임 윈도우가 있다면 안전하게 정리
-    if (gameWindow) {
-        qDebug() << "Cleaning up existing game window...";
-        gameWindow->disconnect();
-
+    // 버튼을 일시적으로 비활성화하여 중복 클릭 방지
+    if (menuButton1) {
+        menuButton1->setEnabled(false);
+    }
+    
     // 이미 게임 윈도우가 생성 중이면 무시
     if (isCreatingGameWindow) {
         qDebug() << "Game window creation already in progress, ignoring click";
+        // 버튼 다시 활성화
+        if (menuButton1) {
+            menuButton1->setEnabled(true);
+        }
         return;
     }
     
@@ -625,7 +628,6 @@ void MainWindow::on_menuButton1_clicked()
         gameWindow->disconnect();
         
         // 게임 윈도우 닫기
-
         gameWindow->close();
         
         // 잠시 대기
@@ -634,62 +636,7 @@ void MainWindow::on_menuButton1_clicked()
         // 메모리 정리
         delete gameWindow;
         gameWindow = nullptr;
-
-        QApplication::processEvents();
-    }
-    
-    // 새 게임 윈도우 생성
-    try {
-        qDebug() << "Creating new single player game window...";
-        gameWindow = new GameWindow(nullptr, false); // 싱글플레이어 모드
         
-        if (gameWindow) {
-            // 현재 플레이어 이름 설정
-            if (playerDialog) {
-                QString currentPlayer = playerDialog->getCurrentPlayer();
-                gameWindow->setCurrentPlayer(currentPlayer);
-            }
-            
-            // 메인 윈도우로 돌아가는 시그널 연결
-            connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
-                qDebug() << "Returning to main window from single player";
-                if (gameWindow) {
-                    gameWindow->disconnect();
-                    gameWindow->close();
-                    gameWindow->deleteLater();
-                    gameWindow = nullptr;
-                }
-                showFullScreen();
-                raise();
-                activateWindow();
-            });
-            
-            // 게임 윈도우가 파괴될 때 정리 (gameWindow 접근 금지, nullptr만 대입)
-            connect(gameWindow, &GameWindow::destroyed, this, [this]() {
-                qDebug() << "Game window destroyed";
-                gameWindow = nullptr;
-            });
-            
-            qDebug() << "Single player game window created successfully";
-        } else {
-            qDebug() << "Failed to create game window!";
-        }
-    } catch (const std::exception& e) {
-        qDebug() << "Exception creating game window:" << e.what();
-        if (gameWindow) {
-            gameWindow->deleteLater();
-            gameWindow = nullptr;
-        }
-    } catch (...) {
-        qDebug() << "Unknown exception creating game window";
-        if (gameWindow) {
-            gameWindow->deleteLater();
-            gameWindow = nullptr;
-        }
-    }
-
-        
-        // 추가 대기
         QApplication::processEvents();
     }
     
@@ -705,6 +652,26 @@ void MainWindow::on_menuButton1_clicked()
                     QString currentPlayer = playerDialog->getCurrentPlayer();
                     gameWindow->setCurrentPlayer(currentPlayer);
                 }
+                
+                // 메인 윈도우로 돌아가는 시그널 연결
+                connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+                    qDebug() << "Returning to main window from single player";
+                    if (gameWindow) {
+                        gameWindow->disconnect();
+                        gameWindow->close();
+                        gameWindow->deleteLater();
+                        gameWindow = nullptr;
+                    }
+                    showFullScreen();
+                    raise();
+                    activateWindow();
+                });
+                
+                // 게임 윈도우가 파괴될 때 정리
+                connect(gameWindow, &GameWindow::destroyed, this, [this]() {
+                    qDebug() << "Game window destroyed";
+                    gameWindow = nullptr;
+                });
                 
                 qDebug() << "Single player game window created successfully";
             } else {
@@ -724,10 +691,12 @@ void MainWindow::on_menuButton1_clicked()
             }
         }
         
-        // 생성 완료 후 플래그 리셋
+        // 생성 완료 후 플래그 리셋 및 버튼 다시 활성화
         isCreatingGameWindow = false;
+        if (menuButton1) {
+            menuButton1->setEnabled(true);
+        }
     });
-
 }
 
 void MainWindow::cleanupGameWindow()
@@ -823,15 +792,18 @@ void MainWindow::on_menuButton2_clicked()
 {
     qDebug() << "Menu 2 clicked - Multiplayer";
     
-
-    // 기존 게임 윈도우가 있다면 안전하게 정리
-    if (gameWindow) {
-        qDebug() << "Cleaning up existing game window...";
-        gameWindow->disconnect();
-
+    // 버튼을 일시적으로 비활성화하여 중복 클릭 방지
+    if (menuButton2) {
+        menuButton2->setEnabled(false);
+    }
+    
     // 이미 게임 윈도우가 생성 중이면 무시
     if (isCreatingGameWindow) {
         qDebug() << "Game window creation already in progress, ignoring click";
+        // 버튼 다시 활성화
+        if (menuButton2) {
+            menuButton2->setEnabled(true);
+        }
         return;
     }
     
@@ -845,7 +817,6 @@ void MainWindow::on_menuButton2_clicked()
         gameWindow->disconnect();
         
         // 게임 윈도우 닫기
-
         gameWindow->close();
         
         // 잠시 대기
@@ -854,62 +825,7 @@ void MainWindow::on_menuButton2_clicked()
         // 메모리 정리
         delete gameWindow;
         gameWindow = nullptr;
-
-        QApplication::processEvents();
-    }
-    
-    // 새 게임 윈도우 생성
-    try {
-        qDebug() << "Creating new multiplayer game window...";
-        gameWindow = new GameWindow(nullptr, true); // 멀티플레이어 모드
         
-        if (gameWindow) {
-            // 현재 플레이어 이름 설정
-            if (playerDialog) {
-                QString currentPlayer = playerDialog->getCurrentPlayer();
-                gameWindow->setCurrentPlayer(currentPlayer);
-            }
-            
-            // 메인 윈도우로 돌아가는 시그널 연결
-            connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
-                qDebug() << "Returning to main window from multiplayer";
-                if (gameWindow) {
-                    gameWindow->disconnect();
-                    gameWindow->close();
-                    gameWindow->deleteLater();
-                    gameWindow = nullptr;
-                }
-                showFullScreen();
-                raise();
-                activateWindow();
-            });
-            
-            // 게임 윈도우가 파괴될 때 정리
-            connect(gameWindow, &GameWindow::destroyed, this, [this]() {
-                qDebug() << "Game window destroyed";
-                gameWindow = nullptr;
-            });
-            
-            qDebug() << "Multiplayer game window created successfully";
-        } else {
-            qDebug() << "Failed to create game window!";
-        }
-    } catch (const std::exception& e) {
-        qDebug() << "Exception creating game window:" << e.what();
-        if (gameWindow) {
-            gameWindow->deleteLater();
-            gameWindow = nullptr;
-        }
-    } catch (...) {
-        qDebug() << "Unknown exception creating game window";
-        if (gameWindow) {
-            gameWindow->deleteLater();
-            gameWindow = nullptr;
-        }
-    }
-
-        
-        // 추가 대기
         QApplication::processEvents();
     }
     
@@ -925,6 +841,26 @@ void MainWindow::on_menuButton2_clicked()
                     QString currentPlayer = playerDialog->getCurrentPlayer();
                     gameWindow->setCurrentPlayer(currentPlayer);
                 }
+                
+                // 메인 윈도우로 돌아가는 시그널 연결
+                connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
+                    qDebug() << "Returning to main window from multiplayer";
+                    if (gameWindow) {
+                        gameWindow->disconnect();
+                        gameWindow->close();
+                        gameWindow->deleteLater();
+                        gameWindow = nullptr;
+                    }
+                    showFullScreen();
+                    raise();
+                    activateWindow();
+                });
+                
+                // 게임 윈도우가 파괴될 때 정리
+                connect(gameWindow, &GameWindow::destroyed, this, [this]() {
+                    qDebug() << "Game window destroyed";
+                    gameWindow = nullptr;
+                });
                 
                 qDebug() << "Multiplayer game window created successfully";
             } else {
@@ -944,10 +880,12 @@ void MainWindow::on_menuButton2_clicked()
             }
         }
         
-        // 생성 완료 후 플래그 리셋
+        // 생성 완료 후 플래그 리셋 및 버튼 다시 활성화
         isCreatingGameWindow = false;
+        if (menuButton2) {
+            menuButton2->setEnabled(true);
+        }
     });
-
 }
 
 void MainWindow::on_menuButton3_clicked()
