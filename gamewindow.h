@@ -88,6 +88,8 @@ private:
 
     void playSound(const QString &soundFile);  // 사운드 재생 도우미 함수
 
+    // 폰트 로딩 도우미 함수
+    QFont loadSystemFont(const QString &fontName, int size, QFont::Weight weight = QFont::Normal);
     
     // 멀티플레이어 관련 함수들
     void startMultiplayer();

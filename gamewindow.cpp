@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <QDataStream>
 #include <QThread>
+#include <QFontDatabase> // QFontDatabase 추가
 
 
 GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
@@ -541,7 +542,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
 
     // 텍스트 정보 표시 - 캐싱 및 최적화
-    static QFont infoFont("Arial", 12);  // 정적 폰트 객체
+    static QFont infoFont = loadSystemFont("CookieRun Regular", 12);  // CookieRun Regular 폰트 사용
     painter.setFont(infoFont);
 
     // 멀티플레이어 모드에서 다른 플레이어들 그리기
@@ -581,7 +582,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
         // 대기실 화면 그리기
         if (isInLobby && !isGameStarted) {
             painter.setPen(Qt::white);
-            QFont lobbyFont("Arial", 24, QFont::Bold);
+            static QFont lobbyFont = loadSystemFont("CookieRun Bold", 24, QFont::Bold);
             painter.setFont(lobbyFont);
             
             QString lobbyText = "Waiting for players...";
@@ -604,7 +605,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
         // 게임 시작 카운트다운 그리기
         if (countdownValue > 0) {
             painter.setPen(Qt::yellow);
-            QFont countdownFont("Arial", 48, QFont::Bold);
+            static QFont countdownFont = loadSystemFont("CookieRun Bold", 48, QFont::Bold);
             painter.setFont(countdownFont);
             
             QString countdownText = QString::number(countdownValue);
@@ -644,6 +645,14 @@ void GameWindow::paintEvent(QPaintEvent *event)
     int rightEdge = width() - rightMargin;
     painter.drawText(rightEdge - fm.horizontalAdvance(scoreText), topMargin, scoreText);
     painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
+    
+    // 점수 표시에 고정폭 폰트 사용
+    static QFont scoreFont = loadSystemFont("CookieRun Bold", 14);
+    painter.setFont(scoreFont);
+    painter.drawText(rightEdge - 100, topMargin + lineSpacing * 4, QString("SCORE: %1").arg(score));
+    
+    // 다시 기본 폰트로 복원
+    painter.setFont(infoFont);
     
     // 디버그 정보는 조건부로 표시 (성능에 영향 줄이기)
 #ifdef QT_DEBUG
@@ -830,7 +839,7 @@ void GameWindow::showMultiplayerResults()
     // 제목
     QLabel *titleLabel = new QLabel("Game Results", resultDialog);
     titleLabel->setAlignment(Qt::AlignCenter);
-    QFont titleFont("Arial", 16, QFont::Bold);
+    QFont titleFont = loadSystemFont("CookieRun Bold", 16, QFont::Bold);
     titleLabel->setFont(titleFont);
     layout->addWidget(titleLabel);
     
@@ -838,7 +847,7 @@ void GameWindow::showMultiplayerResults()
     QString rankText = QString("Your Rank: %1/%2").arg(myRank).arg(finishedPlayers.size() + 1);
     QLabel *rankLabel = new QLabel(rankText, resultDialog);
     rankLabel->setAlignment(Qt::AlignCenter);
-    QFont rankFont("Arial", 14, QFont::Bold);
+    QFont rankFont = loadSystemFont("CookieRun Bold", 14, QFont::Bold);
     rankLabel->setFont(rankFont);
     rankLabel->setStyleSheet("color: #FFD700;"); // 금색
     layout->addWidget(rankLabel);
@@ -847,7 +856,7 @@ void GameWindow::showMultiplayerResults()
     QString scoreText = QString("Your Score: %1").arg(score);
     QLabel *scoreLabel = new QLabel(scoreText, resultDialog);
     scoreLabel->setAlignment(Qt::AlignCenter);
-    scoreLabel->setFont(QFont("Arial", 12));
+    scoreLabel->setFont(loadSystemFont("CookieRun Regular", 12));
     layout->addWidget(scoreLabel);
     
     // 구분선
@@ -858,7 +867,7 @@ void GameWindow::showMultiplayerResults()
     
     // 전체 순위표
     QLabel *rankingTitle = new QLabel("Final Rankings:", resultDialog);
-    rankingTitle->setFont(QFont("Arial", 12, QFont::Bold));
+    rankingTitle->setFont(loadSystemFont("CookieRun Bold", 12, QFont::Bold));
     layout->addWidget(rankingTitle);
     
     QTextEdit *rankingText = new QTextEdit(resultDialog);
@@ -910,6 +919,10 @@ void GameWindow::showMultiplayerResults()
     
     QPushButton *mainMenuButton = new QPushButton("Main Menu", resultDialog);
     QPushButton *restartButton = new QPushButton("Play Again", resultDialog);
+    
+    // 버튼 폰트 설정
+    mainMenuButton->setFont(loadSystemFont("CookieRun Bold", 10, QFont::Bold));
+    restartButton->setFont(loadSystemFont("CookieRun Bold", 10, QFont::Bold));
     
     buttonLayout->addWidget(mainMenuButton);
     buttonLayout->addWidget(restartButton);
@@ -1175,6 +1188,31 @@ void GameWindow::playSound(const QString &soundFile)
             qDebug() << "Failed to play sound with absolute path too.";
         }
     }
+}
+
+// 폰트 로딩을 위한 도우미 함수
+QFont GameWindow::loadSystemFont(const QString &fontName, int size, QFont::Weight weight)
+{
+    QFont font;
+    
+    // 시스템 폰트 디렉토리에서 폰트 로드 시도
+    QString fontPath = QString("/usr/lib/fonts/%1.ttf").arg(fontName);
+    int fontId = QFontDatabase::addApplicationFont(fontPath);
+    
+    if (fontId != -1) {
+        // 폰트 로드 성공
+        QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
+        if (!fontFamilies.isEmpty()) {
+            font = QFont(fontFamilies.first(), size, weight);
+            qDebug() << "Loaded font:" << fontName << "from" << fontPath;
+        }
+    } else {
+        // 폰트 로드 실패 시 시스템 폰트 사용
+        font = QFont(fontName, size, weight);
+        qDebug() << "Using system font:" << fontName;
+    }
+    
+    return font;
 }
 
 void GameWindow::goBackToMainWindow()
