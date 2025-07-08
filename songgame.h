@@ -23,6 +23,7 @@
 #include <QDebug>
 #include <cmath>
 #include <QSet>
+#include <QColor>
 
 struct NoteData {
     QString lyric;      // 가사
@@ -33,11 +34,30 @@ struct NoteData {
     double endTime;     // 끝 시간 (초)
 };
 
+struct SongInfo {
+    QString name;       // 노래 이름
+    QString filename;   // CSV 파일명
+    QString description; // 노래 설명
+};
+
 struct ObstacleData {
     QRect rect;
     QString lyric;
     QString note;
     int octave;
+};
+
+struct FeedbackData {
+    QString message;
+    QPointF position;
+    double startTime;
+    double duration;
+    QColor color;
+    int fontSize;
+    bool active;
+    
+    FeedbackData(const QString &msg, const QPointF &pos, const QColor &col = Qt::yellow, int size = 24)
+        : message(msg), position(pos), startTime(0.0), duration(1.5), color(col), fontSize(size), active(true) {}
 };
 
 class SongGame : public QMainWindow
@@ -64,20 +84,24 @@ private slots:
 private:
     // 게임 상수
     static const int PLAYER_SIZE = 30;
-    static const int OBSTACLE_WIDTH = 120; // 두께 증가
-    static const int OBSTACLE_GAP = 150;
+    static const int OBSTACLE_WIDTH = 80; // 두께 증가
+    static const int OBSTACLE_GAP = 120; // 갭을 더 크게 조정 (기존 80에서 120으로)
     static const int WINDOW_WIDTH = 1024;
     static const int WINDOW_HEIGHT = 600;
     static const int PLAYER_SPEED = 10;
-    static const int OBSTACLE_SPEED = 10; // 속도 증가
+    static const int OBSTACLE_SPEED = 10; // 속도를 더 빠르게 조정 (기존 3에서 8로)
     static const int INITIAL_SCORE = 100;
-    static const int PENALTY_PER_HIT = 5;
+    static const int PENALTY_PER_HIT = 10; // 감점을 10점으로 조정
+    static const int PERFECT_BONUS = 5; // Perfect 시 보너스 점수
 
     // 게임 상태
     QRect player;
     QVector<ObstacleData> obstacles;
     QSet<int> collidedObstacles; // 충돌한 장애물 추적
     QVector<NoteData> songNotes;
+    QVector<SongInfo> availableSongs; // 사용 가능한 노래 목록
+    int selectedSongIndex; // 선택된 노래 인덱스
+    QVector<FeedbackData> feedbacks; // 피드백 메시지들
     QTimer *gameTimer;
     QTimer *pitchTimer;
     QTimer *countdownTimer;
@@ -97,6 +121,10 @@ private:
     QString currentPlayerName;
     double lastSoundTime; // 마지막 사운드 재생 시간
     
+    // 피드백 시스템 관련 변수들
+    int consecutivePerfect; // 연속 Perfect 횟수
+    double lastFeedbackTime; // 마지막 피드백 시간
+    
     // 노래 데이터
     void setupGame();
     void loadSongData();
@@ -105,6 +133,20 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void playSound(const QString &soundFile);
+    
+    // 노래 선택 관련 함수들
+    void initializeSongs();
+    void showSongSelectionDialog();
+    void selectSong(int index);
+    
+    // 피드백 시스템 관련 함수들
+    void addFeedback(const QString &message, const QPointF &position, const QColor &color = Qt::yellow, int fontSize = 24);
+    void updateFeedbacks();
+    void checkPitchAccuracy();
+    void clearFeedbacks();
+    
+    // 폰트 로딩을 위한 도우미 함수
+    QFont loadSystemFont(const QString &fontName, int size, QFont::Weight weight = QFont::Normal);
     
     // 음정을 Y 좌표로 변환
     int noteToYPosition(const QString &note, int octave);
