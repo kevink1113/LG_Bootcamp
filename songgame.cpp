@@ -138,7 +138,7 @@ void SongGame::setupGame()
             gameTimer = new QTimer(this);
             if (gameTimer) {
                 connect(gameTimer, &QTimer::timeout, this, &SongGame::updateGame);
-                gameTimer->start(16); // 약 60 FPS
+                gameTimer->start(8); // 약 120 FPS (더 부드러운 움직임)
             }
         }
         
@@ -258,9 +258,6 @@ int SongGame::noteToYPosition(const QString &note, int octave)
     double normalizedValue = (double)(totalValue - minValue) / (maxValue - minValue);
     int y = (int)((1.0 - normalizedValue) * (height() - PLAYER_SIZE));
     
-    // 디버그 출력 추가
-    qDebug() << "Note:" << note << "Octave:" << octave << "TotalValue:" << totalValue << "Normalized:" << normalizedValue << "Y:" << y;
-    
     return qBound(0, y, height() - PLAYER_SIZE);
 }
 
@@ -292,8 +289,6 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     bottomObstacle.note = note.note;
     bottomObstacle.octave = note.octave;
     obstacles.append(bottomObstacle);
-    
-    qDebug() << "Created obstacle for note:" << note.note << note.octave << "at Y:" << gapY << "Lyric:" << note.lyric;
 }
 
 void SongGame::updateGame()
@@ -301,7 +296,7 @@ void SongGame::updateGame()
     if (!gameRunning) return;
     
     // 게임 시간 업데이트
-    gameTime += 0.016; // 16ms = 0.016초
+    gameTime += 0.008; // 8ms = 0.008초
     
     // 현재 시간에 맞는 노트 확인 및 장애물 생성
     while (currentNoteIndex < songNotes.size() && 
@@ -327,22 +322,36 @@ void SongGame::updateGame()
         player.translate(0, PLAYER_SPEED);
     }
     
-    // 장애물 이동 및 제거
+    // 장애물 이동 및 제거 - 성능 최적화
     const int leftBoundary = 0;
+    const int cleanupMargin = 100; // 화면 밖 여유 공간
+    
     for (int i = obstacles.size() - 1; i >= 0; --i) {
         ObstacleData &obstacle = obstacles[i];
         obstacle.rect.translate(-OBSTACLE_SPEED, 0);
-        if (obstacle.rect.x() + obstacle.rect.width() < leftBoundary) {
+        
+        // 화면 밖으로 충분히 나간 장애물 제거
+        if (obstacle.rect.x() + obstacle.rect.width() < leftBoundary - cleanupMargin) {
             // 장애물이 화면에서 사라질 때 충돌 기록에서 제거
             collidedObstacles.remove(i);
             obstacles.removeAt(i);
         }
     }
     
-    // 충돌 검사 (한 장애물에 한 번만)
+    // 충돌 검사 최적화 - 플레이어 주변 장애물만 검사
     bool collisionOccurred = false;
+    const int playerCenterX = player.x() + player.width() / 2;
+    const int collisionRange = 200; // 충돌 검사 범위
+    
     for (int i = 0; i < obstacles.size(); ++i) {
-        if (!collidedObstacles.contains(i) && player.intersects(obstacles[i].rect)) {
+        const ObstacleData &obstacle = obstacles[i];
+        
+        // 플레이어와 가까운 장애물만 검사
+        if (qAbs(obstacle.rect.x() - playerCenterX) > collisionRange) {
+            continue;
+        }
+        
+        if (!collidedObstacles.contains(i) && player.intersects(obstacle.rect)) {
             collidedObstacles.insert(i);
             collisionOccurred = true;
             break; // 한 번에 하나의 충돌만 처리
@@ -433,20 +442,43 @@ void SongGame::paintEvent(QPaintEvent *event)
         painter.fillRect(rect(), Qt::black);
     }
     
-    // 장애물 그리기
+    // 장애물 그리기 - 이미지 캐싱 최적화
     static QPixmap pillarPixmap;
+    static QMap<int, QPixmap> scaledPillarCache; // 높이별 스케일된 이미지 캐싱
+    
     if (pillarPixmap.isNull()) {
         pillarPixmap.load("/mnt/nfs/brick_pillar.png");
     }
     
     const int REAL_PILLAR_WIDTH = 100; // 실제 두께 증가
+    
+    // 화면에 보이는 장애물만 그리기 (성능 최적화)
+    const int visibleMargin = 50; // 화면 밖 여유 공간
     for (const ObstacleData &obstacle : obstacles) {
+        // 화면 밖의 장애물은 그리지 않음
+        if (obstacle.rect.x() + obstacle.rect.width() < -visibleMargin || 
+            obstacle.rect.x() > width() + visibleMargin) {
+            continue;
+        }
+        
         int h = obstacle.rect.height();
         int x = obstacle.rect.x() + (obstacle.rect.width() - REAL_PILLAR_WIDTH) / 2;
         int y = obstacle.rect.y();
         
         if (!pillarPixmap.isNull()) {
-            QPixmap scaled = pillarPixmap.scaled(REAL_PILLAR_WIDTH, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+            // 높이별 스케일된 이미지 캐싱
+            QPixmap scaled;
+            if (scaledPillarCache.contains(h)) {
+                scaled = scaledPillarCache[h];
+            } else {
+                scaled = pillarPixmap.scaled(REAL_PILLAR_WIDTH, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+                scaledPillarCache[h] = scaled;
+                
+                // 캐시 크기 제한 (메모리 누수 방지)
+                if (scaledPillarCache.size() > 50) {
+                    scaledPillarCache.clear();
+                }
+            }
             painter.drawPixmap(x, y, REAL_PILLAR_WIDTH, h, scaled);
         } else {
             painter.setBrush(Qt::red);
