@@ -24,6 +24,14 @@ RankingDialog::RankingDialog(int newScore, QWidget *parent)
     setupUI();
 }
 
+RankingDialog::RankingDialog(int newScore, const QString& playerName, QWidget *parent)
+    : QDialog(parent), titleLabel(nullptr), closeButton(nullptr), rankingListWidget(nullptr)
+{
+    loadRankings();
+    addScore(newScore, playerName);
+    setupUI();
+}
+
 RankingDialog::~RankingDialog()
 {
     saveRankings();
@@ -133,15 +141,22 @@ void RankingDialog::saveRankings()
     globalRankings = rankings;
 }
 
-void RankingDialog::addScore(int score)
+void RankingDialog::addScore(int score, const QString& playerName)
 {
     // 0점인 경우 기록하지 않음
     if (score <= 0) {
         return;
     }
     
+    // 같은 플레이어가 같은 점수로 이미 등록되어 있는지 확인
+    for (const RankingRecord& record : rankings) {
+        if (record.score == score && record.playerName == playerName) {
+            return; // 이미 등록되어 있으면 추가하지 않음
+        }
+    }
+    
     // 새 점수 추가
-    RankingRecord newRecord(score);
+    RankingRecord newRecord(score, playerName);
     rankings.append(newRecord);
     
     // 점수 순으로 정렬 (높은 점수부터)
@@ -189,41 +204,79 @@ void RankingDialog::updateRankingDisplay()
         rankingLayout->addWidget(noRecordsLabel);
         rankingLayout->addStretch();
     } else {
-        // 랭킹 리스트 표시
+        // 랭킹 리스트 표시 (같은 점수는 같은 순위로 표시)
+        int currentRank = 1;
+        int sameScoreCount = 0;
+        
         for (int i = 0; i < rankings.size(); ++i) {
             const RankingRecord& record = rankings[i];
             
+            // 같은 점수인지 확인
+            if (i > 0 && record.score == rankings[i-1].score) {
+                sameScoreCount++;
+            } else {
+                currentRank = i + 1;
+                sameScoreCount = 0;
+            }
+            
             QWidget* rankItem = new QWidget(rankingListWidget);
             rankItem->setFixedHeight(50);
+            
+            // 1등, 2등, 3등에 대한 특별한 스타일 적용
+            QString backgroundColor;
+            QString borderColor;
+            if (currentRank == 1) {
+                backgroundColor = "#fff8e1"; // 금색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else if (currentRank == 2) {
+                backgroundColor = "#f5f5f5"; // 은색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else if (currentRank == 3) {
+                backgroundColor = "#fff3e0"; // 동색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else {
+                backgroundColor = "#ffffff";
+                borderColor = "transparent";
+            }
+            
             rankItem->setStyleSheet(QString(R"(
                 QWidget {
                     background-color: %1;
-                    border-radius: 10px;
-                    margin: 2px;
+                    border: none;
+                    border-radius: 8px;
+                    margin: 1px;
                 }
-            )").arg(i < 3 ? "#f0f9ff" : "#ffffff"));
+            )").arg(backgroundColor));
             
             QHBoxLayout* itemLayout = new QHBoxLayout(rankItem);
             itemLayout->setContentsMargins(15, 0, 15, 0);
             
-            // 순위 번호
-            QLabel* rankNum = new QLabel(QString::number(i + 1), rankItem);
+            // 순위 번호 (같은 점수는 같은 순위로 표시)
+            QLabel* rankNum = new QLabel(QString::number(currentRank), rankItem);
             rankNum->setStyleSheet(QString(R"(
                 QLabel {
                     font-size: 18px;
                     font-weight: bold;
                     color: %1;
                 }
-            )").arg(i < 3 ? "#2980b9" : "#7f8c8d"));
+            )").arg(currentRank <= 3 ? "#2980b9" : "#7f8c8d"));
             rankNum->setFixedWidth(30);
+            rankNum->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             
-            // 점수 (중앙에 배치)
+            // 점수 (오른쪽에 배치)
             QLabel* scoreLabel = new QLabel(QString("%1 pt").arg(record.score), rankItem);
             scoreLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #e67e22;");
-            scoreLabel->setAlignment(Qt::AlignCenter);
+            scoreLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            scoreLabel->setFixedWidth(80);
+            
+            // 플레이어 이름 (가운데 정렬)
+            QLabel* playerLabel = new QLabel(record.playerName, rankItem);
+            playerLabel->setStyleSheet("font-size: 16px; color: #34495e;");
+            playerLabel->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
             
             itemLayout->addWidget(rankNum);
-            itemLayout->addWidget(scoreLabel, 1);  // stretch factor 1로 중앙 확장
+            itemLayout->addWidget(playerLabel, 1);  // stretch factor 1로 확장하여 가운데 배치
+            itemLayout->addWidget(scoreLabel);
             
             rankingLayout->addWidget(rankItem);
         }

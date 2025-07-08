@@ -64,15 +64,27 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , lastSoundTime(0.0) // 마지막 사운드 재생 시간 초기화
     , consecutivePerfect(0) // 연속 Perfect 횟수 초기화
     , lastFeedbackTime(0.0) // 마지막 피드백 시간 초기화
+    , gameOverDialog(nullptr)
 
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
+    
+    // 중복 생성 방지를 위한 정적 플래그
+    static bool isInitializing = false;
+    if (isInitializing) {
+        qDebug() << "GameWindow initialization already in progress, skipping...";
+        return;
+    }
+    isInitializing = true;
     
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
     
     // 생성자에서 바로 초기화하지 않고 이벤트 루프가 시작된 후 초기화
-    QTimer::singleShot(100, this, &GameWindow::setupGame);
+    QTimer::singleShot(100, this, [this]() {
+        setupGame();
+        isInitializing = false;
+    });
 }
 
 
@@ -207,6 +219,14 @@ GameWindow::~GameWindow()
 void GameWindow::setupGame()
 {
     qDebug() << "Setting up game window...";
+    
+    // 중복 실행 방지
+    static bool isSetupInProgress = false;
+    if (isSetupInProgress) {
+        qDebug() << "Game setup already in progress, skipping...";
+        return;
+    }
+    isSetupInProgress = true;
 
     QScreen *screen = QApplication::primaryScreen();
     QRect screenGeometry = screen->geometry();
@@ -219,7 +239,7 @@ void GameWindow::setupGame()
     player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
     targetY = height()/2 - PLAYER_SIZE/2;
     
-    // 타이머는 이미 QObject(parent)로 관리되므로 중복 생성 방지
+    // 타이머 생성 및 연결
     if (!gameTimer) {
         gameTimer = new QTimer(this);
         connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
@@ -228,22 +248,19 @@ void GameWindow::setupGame()
     
     if (!obstacleTimer) {
         obstacleTimer = new QTimer(this);
-        connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
-
-        // 싱글플레이어 모드이거나 멀티플레이어 호스트일 때만 타이머 시작
-        if (!isMultiplayerMode) {
-            obstacleTimer->start(2000); // 2초마다 장애물 생성
+        if (obstacleTimer) {
+            connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
+            obstacleTimer->start(1800); // 1.8초마다 장애물 생성 (1.5초에서 변경)
         }
-        // 멀티플레이어 모드에서는 호스트가 게임 시작 후에 타이머를 시작함
-
     }
-    obstacleTimer->start(2000); // 2초마다 장애물 생성
     
     if (!pitchTimer) {
         pitchTimer = new QTimer(this);
-        connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
+        if (pitchTimer) {
+            connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
+            pitchTimer->start(50); // 20Hz로 피치 읽기 (100에서 50으로 변경)
+        }
     }
-    pitchTimer->start(50); // 20Hz로 피치 읽기
     
     gameRunning = true;
     score = 0;
@@ -295,7 +312,7 @@ void GameWindow::setupGame()
             obstacleTimer = new QTimer(this);
             if (obstacleTimer) {
                 connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
-                obstacleTimer->start(2000); // 2초마다 장애물 생성
+                obstacleTimer->start(1800); // 1.8초마다 장애물 생성 (1.5초에서 변경)
             }
         }
         
@@ -303,7 +320,7 @@ void GameWindow::setupGame()
             pitchTimer = new QTimer(this);
             if (pitchTimer) {
                 connect(pitchTimer, &QTimer::timeout, this, &GameWindow::readPitchData);
-                pitchTimer->start(50); // 20Hz로 피치 읽기
+                pitchTimer->start(50); // 20Hz로 피치 읽기 (100에서 50으로 변경)
             }
         }
         
@@ -343,15 +360,17 @@ void GameWindow::setupGame()
         
         // player2.png 미리 스케일링 (성능 최적화)
         static QPixmap cachedPlayerPixmap;
+        static bool playerImageLoaded = false;
         const int PLAYER_DISPLAY_SIZE = PLAYER_SIZE * 3; // 기존보다 3배 크게
-        if (cachedPlayerPixmap.isNull()) {
+        if (!playerImageLoaded) {
             QPixmap rawPixmap;
             if (rawPixmap.load("/mnt/nfs/player2.png")) {
-                cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::FastTransformation);
                 qDebug() << "Player image loaded and cached from /mnt/nfs/player2.png (3x size)";
             } else {
                 qDebug() << "Failed to load player image from /mnt/nfs/player2.png";
             }
+            playerImageLoaded = true;
         }
         playerImage = cachedPlayerPixmap;
         
@@ -369,6 +388,9 @@ void GameWindow::setupGame()
     } catch (...) {
         qDebug() << "Unknown exception in setupGame";
     }
+    
+    // 설정 완료 후 플래그 리셋
+    isSetupInProgress = false;
 }
 
 void GameWindow::startMicProcess()
@@ -454,9 +476,10 @@ void GameWindow::readPitchData()
                     if (currentPitch > 0 && currentVolume > 0.1f) {
                         // 정적 변수로 캐싱
                         static const int pitchRange = 37 - 1; // 1~37 범위
+                        static const int screenHeight = height();
                         const float normalizedPitch = (currentPitch - 1.0f) / pitchRange;
-                        targetY = (1.0f - normalizedPitch) * (height() - PLAYER_SIZE);
-                        targetY = qBound(0, targetY, height() - PLAYER_SIZE);
+                        targetY = (1.0f - normalizedPitch) * (screenHeight - PLAYER_SIZE);
+                        targetY = qBound(0, targetY, screenHeight - PLAYER_SIZE);
                     }
                 }
             }
@@ -468,13 +491,17 @@ void GameWindow::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::Antialiasing, false); // 안티앨리어싱 비활성화로 성능 향상
+    
     // 배경 그리기 (이미지 최적화 예시)
     static QPixmap bgPixmap;
-    if (bgPixmap.isNull()) {
+    static bool bgLoaded = false;
+    if (!bgLoaded) {
         bgPixmap.load("/mnt/nfs/background.png");
-        if (!bgPixmap.isNull())
-            bgPixmap = bgPixmap.scaled(size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if (!bgPixmap.isNull()) {
+            bgPixmap = bgPixmap.scaled(size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+        }
+        bgLoaded = true;
     }
     if (!bgPixmap.isNull()) {
         painter.drawPixmap(rect(), bgPixmap);
@@ -486,12 +513,16 @@ void GameWindow::paintEvent(QPaintEvent *event)
     painter.setBrush(QColor(255, 223, 0));  // 밝은 노란색
     painter.setPen(Qt::NoPen);
     
-    // 눈과 미소 미리 생성
-    QPainterPath smilePath;
-    const qreal smileWidth = starSize/5;
-    const qreal smileHeight = starSize/8;
-    smilePath.moveTo(-smileWidth, 0);
-    smilePath.quadTo(0, smileHeight, smileWidth, 0);
+    // 눈과 미소 미리 생성 (정적 객체로 캐싱)
+    static QPainterPath smilePath;
+    static bool smilePathCreated = false;
+    if (!smilePathCreated) {
+        const qreal smileWidth = starSize/5;
+        const qreal smileHeight = starSize/8;
+        smilePath.moveTo(-smileWidth, 0);
+        smilePath.quadTo(0, smileHeight, smileWidth, 0);
+        smilePathCreated = true;
+    }
     
     for (const Star& star : stars) {
         if (!star.active) continue;
@@ -518,10 +549,13 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
     // 장애물 그리기 (상단/하단 이미지로 대체)
     static QPixmap obstacleTopPixmap, obstacleBottomPixmap;
-    if (obstacleTopPixmap.isNull())
+    static bool obstaclesLoaded = false;
+    if (!obstaclesLoaded) {
         obstacleTopPixmap.load("/mnt/nfs/obstacle_top.png");
-    if (obstacleBottomPixmap.isNull())
         obstacleBottomPixmap.load("/mnt/nfs/obstacle_bottom.png");
+        obstaclesLoaded = true;
+    }
+    
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
         // 상단 장애물: y==0, 하단 장애물: y>0
@@ -547,7 +581,6 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.drawEllipse(player);
     }
     
-
     // 텍스트 정보 표시 - 캐싱 및 최적화
     static QFont infoFont = loadSystemFont("CookieRun Regular", 12);  // CookieRun Regular 폰트 사용
     painter.setFont(infoFont);
@@ -634,12 +667,14 @@ void GameWindow::paintEvent(QPaintEvent *event)
         }
     }
     
-    // 점수와 피치 정보 표시 (오른쪽 상단)
-
+    // 점수와 플레이어 정보 표시 (오른쪽 상단)
     painter.setPen(Qt::white);
+    // static QFont scoreFont("Arial", 12, QFont::Bold);
+    static QFont scoreFont = loadSystemFont("CookieRun Bold", 14);
+    painter.setFont(scoreFont);
     
-    // 텍스트 위치 계산 (매 프레임마다 계산하지 않도록 최적화 가능)
-    static QFontMetrics fm(infoFont);
+    // 텍스트 위치 계산
+    QFontMetrics fm(painter.font());
     const int rightMargin = 10;
     const int topMargin = 25;
     const int lineSpacing = 20;
@@ -647,6 +682,8 @@ void GameWindow::paintEvent(QPaintEvent *event)
     // 필요한 문자열만 생성
     QString scoreText = QString("Score: %1").arg(score);
     QString playerText = QString("Player: %1").arg(currentPlayerName.isEmpty() ? "No Player" : currentPlayerName);
+    QString pitchText = QString("Pitch: %1").arg(currentPitch);
+    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
     
     // 오른쪽 정렬 텍스트
     int rightEdge = width() - rightMargin;
@@ -654,7 +691,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
     
     // 점수 표시에 고정폰트 폰트 사용
-    static QFont scoreFont = loadSystemFont("CookieRun Bold", 14);
+    
     painter.setFont(scoreFont);
     painter.drawText(rightEdge - 100, topMargin + lineSpacing * 4, QString("SCORE: %1").arg(score));
     
@@ -703,10 +740,10 @@ void GameWindow::paintEvent(QPaintEvent *event)
     
     // 디버그 정보는 조건부로 표시 (성능에 영향 줄이기)
 #ifdef QT_DEBUG
-    QString pitchText = QString("Pitch: %1").arg(currentPitch);
-    QString volumeText = QString("Volume: %1").arg(QString::number(currentVolume, 'f', 2));
+    // 이미 위에서 선언된 변수들은 재선언하지 않음
     painter.drawText(rightEdge - fm.horizontalAdvance(pitchText), topMargin + lineSpacing, pitchText);
     painter.drawText(rightEdge - fm.horizontalAdvance(volumeText), topMargin + lineSpacing * 2, volumeText);
+    painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
 #endif
 }
 
@@ -795,6 +832,30 @@ void GameWindow::updateGame()
     
     // 멀티플레이어 모드에서 네트워크 업데이트 - 매 프레임마다 직접 전송
     if (isMultiplayerMode) {
+        static int frameCount = 0;
+        frameCount++;
+        
+        // 3초마다만 업데이트 (60FPS 기준 180프레임)
+        if (frameCount % 180 == 0) {
+            updatePlayerPosition(player.x(), player.y(), score, false);
+            
+            // 호스트가 주기적으로 게임 상태 전송
+            if (isHost && isGameStarted) {
+                sendGameState();
+            }
+        }
+    }
+    
+    // 점수에 따른 장애물 생성 빈도 조절 (최적화: 20점마다 체크)
+    static int lastDifficultyCheck = 0;
+    if (score >= lastDifficultyCheck + 20) {
+        lastDifficultyCheck = score;
+        int difficultyLevel = score / 50; // 50점마다 난이도 증가
+        int spawnInterval = qMax(1200, 2500 - difficultyLevel * 150); // 2500ms -> 1200ms까지 감소
+        
+        if (obstacleTimer && obstacleTimer->isActive()) {
+            obstacleTimer->setInterval(spawnInterval);
+        }
         // 매 프레임마다 위치 전송 (실시간)
         updatePlayerPosition(player.x(), player.y(), score, false);
         
@@ -1014,39 +1075,44 @@ void GameWindow::spawnObstacles()
         if (!isHost) return;
     }
     
-    // 고정된 시드값 사용 (모든 보드에서 동일한 랜덤 시퀀스 생성)
-    static QRandomGenerator fixedGenerator(FIXED_SEED); // 고정된 시드값
-    
-    // 장애물 개수에 따라 시드값 조정 (시간에 따른 변화)
-    int obstacleCount = obstacles.size() / 2; // 장애물 쌍의 개수
-    fixedGenerator.seed(FIXED_SEED + obstacleCount);
-    
-    // 장애물 간격을 플레이어가 통과할 수 있도록 조정
-    // 최소 간격: OBSTACLE_GAP/2 + PLAYER_SIZE + 여유공간
-    int minGapY = OBSTACLE_GAP/2 + PLAYER_SIZE + 50; // 최소 간격
-    int maxGapY = height() - OBSTACLE_GAP/2 - PLAYER_SIZE - 50; // 최대 간격
+    static QRandomGenerator fixedGenerator(FIXED_SEED);
+    int obstacleCount = obstacles.size() / 2;
+    fixedGenerator.seed(QDateTime::currentMSecsSinceEpoch() + obstacleCount);
+
+    // 점수에 따른 난이도 조절
+    int difficultyLevel = score / 30; // 30점마다 난이도 증가 (50에서 30으로 변경)
+    int minGap = qMax(40, 120 - difficultyLevel * 20); // 최소 간격 더 작게 (60에서 40으로, 150에서 120으로)
+    int maxGap = qMax(60, 140 - difficultyLevel * 25); // 최대 간격 더 작게 (100에서 60으로, 180에서 140으로)
     
     // 범위가 유효한지 확인
-    if (minGapY >= maxGapY) {
-        minGapY = 150;
-        maxGapY = height() - 150;
+    if (minGap >= maxGap) {
+        minGap = 50;
+        maxGap = 80;
     }
     
+    // 장애물 사이의 통과 공간을 랜덤하게 설정
+    int randomGap = fixedGenerator.bounded(minGap, maxGap + 1);
+    
+    // gapY 계산 (장애물 사이 통과 위치)
+    int minGapY = randomGap/2 + PLAYER_SIZE + 30;
+    int maxGapY = height() - randomGap/2 - PLAYER_SIZE - 30;
+    if (minGapY >= maxGapY) {
+        minGapY = 60;
+        maxGapY = height() - 60;
+    }
     int gapY = fixedGenerator.bounded(minGapY, maxGapY);
-    
+
     // 위쪽 장애물
-    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    QRect topObstacle(width(), 0, OBSTACLE_WIDTH, gapY - randomGap/2);
     obstacles.append(topObstacle);
-    
     // 아래쪽 장애물
-    QRect bottomObstacle(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
+    QRect bottomObstacle(width(), gapY + randomGap/2, OBSTACLE_WIDTH, height() - (gapY + randomGap/2));
     obstacles.append(bottomObstacle);
 
-    // 30% 확률로 별 생성 (고정된 시드값 사용)
-    if (fixedGenerator.bounded(100) < 30) {
-        // 별을 장애물 사이 통과 가능한 공간의 중앙에 배치
+    // 별 생성 확률은 그대로
+    if (fixedGenerator.bounded(100) < 20) {
         int starX = width() + OBSTACLE_WIDTH/2;
-        int starY = gapY; // 장애물 사이 공간의 중앙
+        int starY = gapY;
         stars.append(Star(QPointF(starX, starY)));
     }
     
@@ -1077,6 +1143,9 @@ bool GameWindow::checkCollision()
 void GameWindow::gameOver()
 {
     gameRunning = false;
+    
+    // 게임 오버 시그널 발생 (배경 음악 중지를 위해)
+    emit gameOverSignal();
     
     // 멀티플레이어 모드에서 게임 오버 상태 전송
     if (isMultiplayerMode) {
@@ -1185,19 +1254,18 @@ void GameWindow::setupBackButton()
     backButton->setFixedSize(50, 50);
     backButton->move(10, 10);
     
-    // 스타일 설정
+    // 스타일 설정 (배경 제거)
     QString buttonStyle = 
         "QPushButton {"
-        "   background-color: rgba(255, 255, 255, 180);"
+        "   background-color: transparent;"
         "   border: none;"
-        "   border-radius: 10px;"
         "   padding: 5px;"
         "}"
         "QPushButton:hover {"
-        "   background-color: rgba(255, 255, 255, 220);"
+        "   background-color: rgba(255, 255, 255, 50);"
         "}"
         "QPushButton:pressed {"
-        "   background-color: rgba(200, 200, 200, 220);"
+        "   background-color: rgba(255, 255, 255, 100);"
         "}";
     backButton->setStyleSheet(buttonStyle);
     
@@ -1205,7 +1273,7 @@ void GameWindow::setupBackButton()
     QStyle *style = QApplication::style();
     QIcon backIcon = style->standardIcon(QStyle::SP_ArrowBack);
     backButton->setIcon(backIcon);
-    backButton->setIconSize(QSize(30, 30));
+    backButton->setIconSize(QSize(40, 40));
     
     connect(backButton, &QPushButton::clicked, this, &GameWindow::goBackToMainWindow);
     backButton->show();
@@ -1288,8 +1356,23 @@ void GameWindow::goBackToMainWindow()
         countdownTimer->stop();
     }
     
-    // 게임 창 닫기 (시그널 발생 없이)
-    close();
+    // 게임 오버 다이얼로그가 열려있으면 닫기
+    if (gameOverDialog && gameOverDialog->isVisible()) {
+        gameOverDialog->disconnect();
+        gameOverDialog->close();
+        gameOverDialog = nullptr;
+    }
+    
+    // 마이크 프로세스 정리
+    stopMicProcess();
+    
+    // 메인 윈도우로 돌아가는 시그널 발생 (배경 음악 중지를 위해)
+    emit requestMainWindow();
+    
+    // 잠시 대기 후 게임 창 닫기
+    QTimer::singleShot(100, this, [this]() {
+        close();
+    });
 }
 
 
@@ -1851,7 +1934,7 @@ void GameWindow::startGameCountdown()
         if (isHost) {
             // 호스트의 obstacleTimer 시작
             if (obstacleTimer && !obstacleTimer->isActive()) {
-                obstacleTimer->start(2000);
+                obstacleTimer->start(1800);
             }
             spawnObstacles();
         }

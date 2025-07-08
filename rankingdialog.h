@@ -10,8 +10,9 @@
 
 struct RankingRecord {
     int score;
+    QString playerName;
     
-    RankingRecord(int s = 0) : score(s) {}
+    RankingRecord(int s = 0, const QString& name = "Unknown") : score(s), playerName(name) {}
 };
 
 class RankingDialog : public QDialog
@@ -21,6 +22,7 @@ class RankingDialog : public QDialog
 public:
     explicit RankingDialog(QWidget *parent = nullptr);
     explicit RankingDialog(int newScore, QWidget *parent = nullptr);
+    explicit RankingDialog(int newScore, const QString& playerName, QWidget *parent = nullptr);
     ~RankingDialog();
 
 private slots:
@@ -35,7 +37,7 @@ private:
     void setupUI();
     void loadRankings();
     void saveRankings();
-    void addScore(int score);
+    void addScore(int score, const QString& playerName = "Unknown");
     void updateRankingDisplay();
 };
 

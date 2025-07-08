@@ -37,6 +37,9 @@ private slots:
     void onVolumeChanged(int value);
     void showRankingDialog();  // 이름 변경
     void showPlayerDialog();   // 플레이어 설정 다이얼로그
+    void createNewGameWindow();
+    void cleanupGameWindow();
+    void startBackgroundMusic(); // 배경 음악 시작 함수 추가
 
 private:
     Ui::MainWindow *ui;
@@ -62,12 +65,13 @@ private:
     bool isCreatingGameWindow;
     bool isCreatingSongGame;
     QTimer *gameWindowCreationTimer;
+    QTimer *buttonCooldownTimer;
+    QTimer *backgroundMusicRestartTimer; // 배경 음악 재시작 타이머 추가
+    bool isButtonCooldownActive;
     
     void createSettingsDialog();
     void updateButtonPositions();
     void updateCurrentPlayerDisplay();  // 현재 플레이어 표시 업데이트
-    void createNewGameWindow();  // 새 함수 추가
-    void cleanupGameWindow();    // 게임 윈도우 정리 함수
 
     
     // 오디오 관련 메서드

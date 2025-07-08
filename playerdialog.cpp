@@ -593,8 +593,12 @@ void PlayerDialog::setPlayer()
     }
     
     if (addPlayer(playerName)) {
+        // 새로 등록된 플레이어를 자동으로 current player로 설정
+        currentPlayer = playerName;
+        updatePlayerList();
+        
         QMessageBox::information(this, "✅ Player Set", 
-            QString("Player '%1' has been added to the list!\n\nYou can now select this player from the list below.")
+            QString("Player '%1' has been added and is now the current player!")
             .arg(playerName));
         
         // 입력 필드 초기화

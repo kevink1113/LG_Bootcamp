@@ -75,6 +75,8 @@ public:
 
 signals:
     void requestMainWindow();
+    void gameOverSignal(); // 게임 오버 시그널 추가
+    void restartRequested(); // 게임 재시작 시그널 추가
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
@@ -196,13 +198,14 @@ private:
     
     // 게임 상수
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
-    static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
+    static const int OBSTACLE_WIDTH = 50;  // 장애물 너비 (40에서 50으로 증가)
 
 
     static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
 
 
     QPixmap playerImage; // 플레이어 이미지
+    GameOverDialog *gameOverDialog; // 게임 오버 다이얼로그 포인터
 
 //    static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
 
