@@ -158,15 +158,15 @@ MainWindow::MainWindow(QWidget *parent) :
         delete titleLabel;
         titleLabel = nullptr;
     }
-    titleLabel = new QLabel("Melody Game", this);
+    titleLabel = new QLabel("<span style='color:#FF69B4;'>피치</span>피치", this);
     titleLabel->setObjectName("melodyGameTitleLabel");
     titleLabel->setAlignment(Qt::AlignCenter);
     titleLabel->setStyleSheet(R"(
         QLabel {
             background: transparent;
-            font-size: 38pt;
+            font-size: 46pt;
             font-weight: bold;
-            color: #2c3e50;
+            color:rgb(50, 105, 160);
             letter-spacing: 2px;
             padding-top: 0px;
             margin-top: 0px;
@@ -204,7 +204,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QPixmap button1Pixmap("/mnt/nfs/button1.png");
     if (!button1Pixmap.isNull()) {
         QIcon button1Icon(button1Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        newMenuButton1->setText("Single Play");
+        newMenuButton1->setText("싱글플레이");
         newMenuButton1->setStyleSheet(
             "QPushButton {"
             "   border: none;"
@@ -232,7 +232,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QPixmap button2Pixmap("/mnt/nfs/button2.png");
     if (!button2Pixmap.isNull()) {
         QIcon button2Icon(button2Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        newMenuButton2->setText("Multi Play");
+        newMenuButton2->setText("멀티플레이");
         newMenuButton2->setStyleSheet(
             "QPushButton {"
             "   border: none;"
@@ -260,7 +260,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QPixmap button3Pixmap("/mnt/nfs/button3.png");
     if (!button3Pixmap.isNull()) {
         QIcon button3Icon(button3Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        newMenuButton3->setText("Sing Along");
+        newMenuButton3->setText("싱어롱");
         newMenuButton3->setStyleSheet(
             "QPushButton {"
             "   border: none;"

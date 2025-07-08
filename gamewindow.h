@@ -127,6 +127,7 @@ private:
     void checkGameStart();
     void calculateRankings(); // 순위 계산 함수 추가
     void showMultiplayerResults(); // 멀티플레이어 결과 표시 함수 추가
+    void syncObstaclesWithHost(); // 호스트와 장애물 동기화 함수 추가
 
 
     QTimer *gameTimer;
@@ -155,6 +156,7 @@ private:
     int countdownValue;
     GameState sharedGameState;
     qint64 lastGameStateUpdate;
+    qint64 gameStartTime; // 게임 시작 시간 (동기화용)
     
     // 멀티플레이어 순위 관련 멤버들
     bool isGameFinished; // 전체 게임이 끝났는지 여부
