@@ -849,37 +849,6 @@ void GameWindow::updateGame()
     const int leftBoundary = 0;
     const int obstacleSpeed = 3;
     
-    // 클라이언트의 경우 기존 장애물들도 호스트와 동기화 (게임 중간에 참여한 경우만)
-    if (isMultiplayerMode && !isHost && gameStartTime > 0 && obstacles.size() > 0) {
-        static bool initialSyncDone = false;
-        static qint64 lastGameStartTime = 0;
-        
-        // 게임 시작 시간이 변경되면 동기화 플래그 리셋
-        if (lastGameStartTime != gameStartTime) {
-            initialSyncDone = false;
-            lastGameStartTime = gameStartTime;
-        }
-        
-        if (!initialSyncDone) {
-            qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
-            qint64 timeDiff = currentTime - gameStartTime;
-            
-            // 게임 시작과 동시에 참여한 경우 (1초 이내)에는 동기화하지 않음
-            if (timeDiff >= 1000) {
-                int adjustmentPixels = (timeDiff * 3) / 8;
-                
-                if (adjustmentPixels > 0) {
-                    // 모든 기존 장애물을 호스트와 동기화
-                    for (int i = 0; i < obstacles.size(); ++i) {
-                        obstacles[i].translate(-adjustmentPixels, 0);
-                    }
-                    qDebug() << "Initial client obstacle sync: adjusted" << obstacles.size() << "obstacles by" << adjustmentPixels << "pixels";
-                }
-            }
-            initialSyncDone = true;
-        }
-    }
-    
     for (int i = obstacles.size() - 1; i >= 0; --i) {
         QRect &obstacle = obstacles[i];
         obstacle.translate(-obstacleSpeed, 0); // 장애물이 왼쪽으로 이동
@@ -939,9 +908,9 @@ void GameWindow::updateGame()
         // 매 프레임마다 위치 전송 (실시간)
         updatePlayerPosition(player.x(), player.y(), score, false);
         
-        // 호스트가 주기적으로 게임 상태 전송 (1초마다) - 백업용
+        // 고정 시드를 사용하므로 게임 상태 동기화는 최소화 (5초마다 백업용)
         static int frameCount = 0;
-        if (isHost && isGameStarted && frameCount % 120 == 0) { // 120프레임마다 (약 1초)
+        if (isHost && isGameStarted && frameCount % 600 == 0) { // 600프레임마다 (약 5초)
             sendGameState();
         }
         frameCount++;
@@ -1207,30 +1176,6 @@ void GameWindow::spawnObstacles()
     // 아래쪽 장애물
     QRect bottomObstacle(width(), gapY + randomGap/2, OBSTACLE_WIDTH, height() - (gapY + randomGap/2));
     obstacles.append(bottomObstacle);
-    
-    // 클라이언트인 경우 장애물 위치를 호스트와 동기화 (게임 중간에 참여한 경우만)
-    if (isMultiplayerMode && !isHost && gameStartTime > 0) {
-        qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
-        qint64 timeDiff = currentTime - gameStartTime;
-        
-        // 게임 시작과 동시에 참여한 경우 (1초 이내)에는 동기화하지 않음
-        if (timeDiff >= 1000) {
-            // 시간 차이에 따른 장애물 위치 조정 (장애물 속도: 3픽셀/프레임, 8ms/프레임)
-            int adjustmentPixels = (timeDiff * 3) / 8; // 시간 차이를 픽셀 단위로 변환
-            
-            if (adjustmentPixels > 0) {
-                // 장애물을 앞으로 이동시켜 호스트와 동기화
-                topObstacle.translate(-adjustmentPixels, 0);
-                bottomObstacle.translate(-adjustmentPixels, 0);
-                
-                // obstacles 벡터의 마지막 두 요소 업데이트
-                obstacles[obstacles.size() - 2] = topObstacle;
-                obstacles[obstacles.size() - 1] = bottomObstacle;
-                
-                qDebug() << "Client obstacle sync: timeDiff=" << timeDiff << "ms, adjustment=" << adjustmentPixels << "pixels";
-            }
-        }
-    }
     
     qDebug() << "Created obstacles with width:" << OBSTACLE_WIDTH;
     qDebug() << "Top obstacle:" << topObstacle;
@@ -1648,11 +1593,8 @@ void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
             return;
         }
         
-        // 디버그: 전송 시간 로그 (10번에 한 번만)
-        static int sendCount = 0;
-        if (++sendCount % 10 == 0) {
-            qDebug() << "Sending position at" << sendTime << "x:" << x << "y:" << y;
-        }
+        // 디버그: 전송 시간 로그 (모든 패킷에 대해 출력)
+        qDebug() << "Sending position at" << sendTime << "x:" << x << "y:" << y;
         
         // 브로드캐스트 주소로 전송
         QHostAddress broadcastAddress("192.168.10.255");
@@ -1740,11 +1682,8 @@ void GameWindow::processPositionPacket(QDataStream &stream, const QHostAddress &
     qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
     qint64 latency = currentTime - sendTime;
     
-    // 디버그: 수신 시간과 지연 로그 (10번에 한 번만)
-    static int recvCount = 0;
-    if (++recvCount % 10 == 0) {
-        qDebug() << "Received position from" << playerId << "latency:" << latency << "ms x:" << x << "y:" << y;
-    }
+    // 디버그: 수신 시간과 지연 로그 (모든 패킷에 대해 출력)
+    qDebug() << "Received position from" << playerId << "latency:" << latency << "ms x:" << x << "y:" << y;
     
     // 기존 플레이어 업데이트 또는 새 플레이어 추가
     bool found = false;
@@ -1828,8 +1767,6 @@ void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sen
     QJsonObject obj = doc.object();
     QString type = obj["type"].toString();
     
-    qDebug() << "Received JSON message type:" << type;
-    
     if (type == "player_update") {
         // 기존 JSON 위치 업데이트 처리
         QString playerId = obj["playerId"].toString();
@@ -1911,31 +1848,12 @@ void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sen
             }
         }
     }
-    else if (type == "game_start") {
-        if (!isHost) {
-            // 클라이언트는 카운트다운을 무시하고 바로 게임 준비
-            qDebug() << "Game start signal received, waiting for game_started...";
-        }
-    }
-    else if (type == "countdown") {
-        if (!isHost) {
-            // 클라이언트는 카운트다운을 무시
-            qDebug() << "Countdown received but ignored by client";
-        }
-    }
+    // 카운트다운 관련 코드 제거 (즉시 게임 시작으로 변경)
     else if (type == "game_started") {
         if (!isHost) {
-            qDebug() << "=== GAME STARTED MESSAGE RECEIVED ===";
             qDebug() << "Game started by host!";
             isGameStarted = true;
             isInLobby = false;
-            
-            // 카운트다운 타이머가 있다면 정리
-            if (countdownTimer) {
-                countdownTimer->stop();
-                countdownTimer->deleteLater();
-                countdownTimer = nullptr;
-            }
             
             // 호스트의 게임 시작 시간을 받아서 동기화
             if (obj.contains("startTime")) {
@@ -1943,27 +1861,12 @@ void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sen
                 qDebug() << "Synchronized game start time:" << gameStartTime;
             }
             
-            // 호스트의 장애물 상태를 바로 적용
-            if (obj.contains("obstacles")) {
-                obstacles.clear();
-                QJsonArray obstaclesArray = obj["obstacles"].toArray();
-                for (const QJsonValue &value : obstaclesArray) {
-                    QJsonObject obstacleObj = value.toObject();
-                    QRect obstacle(
-                        obstacleObj["x"].toInt(),
-                        obstacleObj["y"].toInt(),
-                        obstacleObj["width"].toInt(),
-                        obstacleObj["height"].toInt()
-                    );
-                    obstacles.append(obstacle);
-                }
-                qDebug() << "Applied host obstacles:" << obstacles.size();
-            }
-            
-            // 클라이언트의 obstacleTimer 시작
+            // 클라이언트가 즉시 장애물 생성 시작 (고정 시드로 동일한 장애물 생성)
             if (obstacleTimer && !obstacleTimer->isActive()) {
                 obstacleTimer->start(1800);
             }
+            // 즉시 첫 번째 장애물 생성
+            spawnObstacles();
         }
     }
     else if (type == "game_state") {
@@ -2020,105 +1923,41 @@ void GameWindow::checkGameStart()
 {
     if (!isInLobby || isGameStarted) return;
     
-    // 이미 카운트다운이 진행 중이면 중복 실행 방지
-    if (countdownTimer && countdownTimer->isActive()) return;
-    
-    // 최소 2명 이상이고 모든 플레이어가 준비되었을 때 게임 시작
+    // 최소 2명 이상이면 즉시 게임 시작 (카운트다운 없이)
     int totalPlayers = otherPlayers.size() + 1;
     if (totalPlayers >= 2) {
-        // 호스트가 게임 시작 카운트다운 시작
+        // 호스트가 즉시 게임 시작
         if (isHost) {
-            qDebug() << "Starting game countdown...";
-            countdownValue = 3;
+            qDebug() << "Starting game immediately with" << totalPlayers << "players";
             
-            // 기존 타이머가 있다면 정리
-            if (countdownTimer) {
-                countdownTimer->stop();
-                countdownTimer->deleteLater();
-            }
+            // 게임 시작 시간 기록
+            gameStartTime = QDateTime::currentMSecsSinceEpoch();
             
-            countdownTimer = new QTimer(this);
-            connect(countdownTimer, &QTimer::timeout, this, &GameWindow::startGameCountdown);
-            countdownTimer->start(1000); // 1초마다
-            
-            // 게임 시작 메시지 전송
+            // 게임 시작 메시지 전송 (시작 시간 포함)
             QJsonObject startMsg;
-            startMsg["type"] = "game_start";
-            startMsg["countdown"] = countdownValue;
+            startMsg["type"] = "game_started";
+            startMsg["startTime"] = gameStartTime;
             
             QJsonDocument doc(startMsg);
             QByteArray datagram = doc.toJson();
             
             QHostAddress broadcastAddress("192.168.10.255");
             udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
-        }
-    }
-}
-
-void GameWindow::startGameCountdown()
-{
-    countdownValue--;
-    
-    if (countdownValue > 0) {
-        // 카운트다운 계속
-        QJsonObject countdownMsg;
-        countdownMsg["type"] = "countdown";
-        countdownMsg["value"] = countdownValue;
-        
-        QJsonDocument doc(countdownMsg);
-        QByteArray datagram = doc.toJson();
-        
-        QHostAddress broadcastAddress("192.168.10.255");
-        udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
-    } else {
-        // 게임 시작
-        qDebug() << "Game started!";
-        isGameStarted = true;
-        isInLobby = false;
-        
-        // 게임 시작 시간 기록
-        gameStartTime = QDateTime::currentMSecsSinceEpoch();
-        
-        if (countdownTimer) {
-            countdownTimer->stop();
-            countdownTimer->deleteLater();
-            countdownTimer = nullptr;
-        }
-        
-        // 호스트가 먼저 장애물 생성 및 타이머 시작
-        if (isHost) {
+            
+            // 호스트가 즉시 게임 시작
+            isGameStarted = true;
+            isInLobby = false;
+            
             // 호스트의 obstacleTimer 시작
             if (obstacleTimer && !obstacleTimer->isActive()) {
                 obstacleTimer->start(1800);
             }
             spawnObstacles();
         }
-        
-        // 게임 시작 메시지 전송 (시작 시간과 현재 장애물 상태 포함)
-        QJsonObject startMsg;
-        startMsg["type"] = "game_started";
-        startMsg["startTime"] = gameStartTime;
-        
-        // 현재 장애물 상태도 함께 전송
-        QJsonArray obstaclesArray;
-        for (const QRect &obstacle : obstacles) {
-            QJsonObject obstacleObj;
-            obstacleObj["x"] = obstacle.x();
-            obstacleObj["y"] = obstacle.y();
-            obstacleObj["width"] = obstacle.width();
-            obstacleObj["height"] = obstacle.height();
-            obstaclesArray.append(obstacleObj);
-        }
-        startMsg["obstacles"] = obstaclesArray;
-        
-        QJsonDocument doc(startMsg);
-        QByteArray datagram = doc.toJson();
-        
-        QHostAddress broadcastAddress("192.168.10.255");
-        udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
-        qDebug() << "Game started message sent with obstacles:" << obstacles.size();
     }
 }
+
+// startGameCountdown 함수 제거 (즉시 게임 시작으로 변경)
 
 void GameWindow::sendGameState()
 {
@@ -2287,37 +2126,4 @@ void GameWindow::checkPitchAccuracy()
 void GameWindow::clearFeedbacks()
 {
     feedbacks.clear();
-}
-
-void GameWindow::syncObstaclesWithHost()
-{
-    if (!isMultiplayerMode || isHost || gameStartTime <= 0) return;
-    
-    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
-    qint64 timeDiff = currentTime - gameStartTime;
-    
-    // 게임 시작과 동시에 참여한 경우 (1초 이내)에는 동기화하지 않음
-    if (timeDiff < 1000) {
-        qDebug() << "Client joined at game start, no sync needed";
-        return;
-    }
-    
-    // 시간 차이에 따른 장애물 위치 조정 (장애물 속도: 3픽셀/프레임, 8ms/프레임)
-    int adjustmentPixels = (timeDiff * 3) / 8;
-    
-    if (adjustmentPixels > 0 && obstacles.size() > 0) {
-        // 모든 장애물을 호스트와 동기화
-        for (int i = 0; i < obstacles.size(); ++i) {
-            obstacles[i].translate(-adjustmentPixels, 0);
-        }
-        
-        // 별들도 동기화
-        for (int i = 0; i < stars.size(); ++i) {
-            if (stars[i].active) {
-                stars[i].pos.setX(stars[i].pos.x() - adjustmentPixels);
-            }
-        }
-        
-        qDebug() << "Obstacle sync: adjusted" << obstacles.size() << "obstacles and" << stars.size() << "stars by" << adjustmentPixels << "pixels";
-    }
 }

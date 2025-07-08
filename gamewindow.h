@@ -92,7 +92,6 @@ private slots:
     // 멀티플레이어 관련 슬롯들
     void readPendingDatagrams();
     void cleanupInactivePlayers();
-    void startGameCountdown();
 
 private:
     void setupGame();
@@ -127,7 +126,6 @@ private:
     void checkGameStart();
     void calculateRankings(); // 순위 계산 함수 추가
     void showMultiplayerResults(); // 멀티플레이어 결과 표시 함수 추가
-    void syncObstaclesWithHost(); // 호스트와 장애물 동기화 함수 추가
 
 
     QTimer *gameTimer;
