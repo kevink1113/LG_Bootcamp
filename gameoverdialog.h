@@ -6,7 +6,6 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QKeyEvent>
 #include "rankingdialog.h"
 
 class GameOverDialog : public QDialog
@@ -23,9 +22,6 @@ signals:
 
 private slots:
     void onRankingButtonClicked();
-
-protected:
-    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     void setupUI(int score, const QString &playerName);

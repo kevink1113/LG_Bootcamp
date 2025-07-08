@@ -57,6 +57,8 @@ public:
 
 signals:
     void requestMainWindow();
+    void gameOverSignal(); // 게임 오버 시그널 추가
+    void restartRequested(); // 게임 재시작 시그널 추가
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;

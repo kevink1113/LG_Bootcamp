@@ -845,6 +845,9 @@ void GameWindow::gameOver()
 {
     gameRunning = false;
     
+    // 게임 오버 시그널 발생 (배경 음악 중지를 위해)
+    emit gameOverSignal();
+    
     // 멀티플레이어 모드에서 게임 오버 상태 전송
     if (isMultiplayerMode) {
         updatePlayerPosition(player.x(), player.y(), score, true);
@@ -876,6 +879,16 @@ void GameWindow::gameOver()
     });
     
     connect(gameOverDialog, &GameOverDialog::restartRequested, this, [this]() {
+        // 게임 재시작 시그널 발생 (배경 음악 재시작을 위해)
+        emit restartRequested();
+        
+        // 게임 오버 다이얼로그 정리
+        if (gameOverDialog) {
+            gameOverDialog->disconnect();
+            gameOverDialog->close();
+            gameOverDialog = nullptr;
+        }
+        
         // 게임 재시작
         gameRunning = true;
         score = 0;
@@ -1002,12 +1015,6 @@ void GameWindow::goBackToMainWindow()
 {
     qDebug() << "Going back to main window";
     
-    // 게임 오버 다이얼로그가 열려있으면 닫기
-    if (gameOverDialog && gameOverDialog->isVisible()) {
-        gameOverDialog->close();
-        gameOverDialog = nullptr;
-    }
-    
     // 게임 상태 정지
     gameRunning = false;
     
@@ -1025,8 +1032,23 @@ void GameWindow::goBackToMainWindow()
         countdownTimer->stop();
     }
     
-    // 게임 창 닫기 (시그널 발생 없이)
-    close();
+    // 게임 오버 다이얼로그가 열려있으면 닫기
+    if (gameOverDialog && gameOverDialog->isVisible()) {
+        gameOverDialog->disconnect();
+        gameOverDialog->close();
+        gameOverDialog = nullptr;
+    }
+    
+    // 마이크 프로세스 정리
+    stopMicProcess();
+    
+    // 메인 윈도우로 돌아가는 시그널 발생 (배경 음악 중지를 위해)
+    emit requestMainWindow();
+    
+    // 잠시 대기 후 게임 창 닫기
+    QTimer::singleShot(100, this, [this]() {
+        close();
+    });
 }
 
 

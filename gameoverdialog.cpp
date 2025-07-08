@@ -191,15 +191,3 @@ void GameOverDialog::onRankingButtonClicked()
         rankingDialog = nullptr;
     }
 }
-
-void GameOverDialog::keyPressEvent(QKeyEvent *event)
-{
-    // ESC 키나 뒤로가기 버튼 클릭 시 다이얼로그 닫기
-    if (event->key() == Qt::Key_Escape) {
-        close();
-        return;
-    }
-    
-    // 기본 키 이벤트 처리
-    QDialog::keyPressEvent(event);
-}

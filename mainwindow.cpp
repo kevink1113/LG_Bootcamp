@@ -329,17 +329,25 @@ MainWindow::MainWindow(QWidget *parent) :
         if (menuButton3) menuButton3->setEnabled(true);
     });
     
+    // 배경 음악 재시작 타이머 초기화
+    backgroundMusicRestartTimer = new QTimer(this);
+    backgroundMusicRestartTimer->setSingleShot(true);
+    connect(backgroundMusicRestartTimer, &QTimer::timeout, this, [this]() {
+        if (backgroundMusicEnabled && backgroundMusicProcess) {
+            // 프로세스가 종료되었으면 다시 시작
+            if (backgroundMusicProcess->state() == QProcess::NotRunning) {
+                qDebug() << "Background music process finished, restarting...";
+                startBackgroundMusic();
+            }
+        }
+    });
+    
     createSettingsDialog();
     
     // 초기 플레이어 표시 업데이트 (지연 실행으로 모든 UI가 준비된 후 실행)
     QTimer::singleShot(100, this, &MainWindow::updateCurrentPlayerDisplay);
     
-    // 배경 음악이 활성화되어 있으면 시작
-    if (backgroundMusicEnabled) {
-        QTimer::singleShot(500, this, [this]() {
-            controlBackgroundMusicProcess(true);
-        });
-    }
+    // 배경 음악은 게임 시작 시에만 재생되도록 수정 (자동 시작 제거)
 }
 
 MainWindow::~MainWindow()
@@ -356,6 +364,13 @@ MainWindow::~MainWindow()
         buttonCooldownTimer->stop();
         buttonCooldownTimer->deleteLater();
         buttonCooldownTimer = nullptr;
+    }
+    
+    // 배경 음악 재시작 타이머 정리
+    if (backgroundMusicRestartTimer) {
+        backgroundMusicRestartTimer->stop();
+        backgroundMusicRestartTimer->deleteLater();
+        backgroundMusicRestartTimer = nullptr;
     }
     
     // 배경 음악 프로세스 정리
@@ -413,12 +428,7 @@ void MainWindow::initAudio()
     // 볼륨 기본값 설정
     volumeLevel = 50;
     
-    // 초기 배경 음악 시작
-    if (backgroundMusicEnabled) {
-        QTimer::singleShot(500, this, [this]() {
-            controlBackgroundMusicProcess(true);
-        });
-    }
+    // 배경 음악은 게임 시작 시에만 재생되도록 수정 (자동 시작 제거)
 }
 
 void MainWindow::createSettingsDialog()
@@ -665,6 +675,9 @@ void MainWindow::on_menuButton1_clicked()
             gameWindow = new GameWindow(nullptr, false); // 싱글플레이어 모드
             
             if (gameWindow) {
+                // 게임 시작 시 배경 음악 시작
+                controlBackgroundMusicProcess(true);
+                
                 // 현재 플레이어 이름 설정
                 if (playerDialog) {
                     QString currentPlayer = playerDialog->getCurrentPlayer();
@@ -674,6 +687,9 @@ void MainWindow::on_menuButton1_clicked()
                 // 메인 윈도우로 돌아가는 시그널 연결
                 connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
                     qDebug() << "Returning to main window from single player";
+                    // 게임 종료 시 배경 음악 중지
+                    controlBackgroundMusicProcess(false);
+                    
                     if (gameWindow) {
                         gameWindow->disconnect();
                         gameWindow->close();
@@ -685,9 +701,23 @@ void MainWindow::on_menuButton1_clicked()
                     activateWindow();
                 });
                 
+                // 게임 오버 시그널 연결 (배경 음악 중지)
+                connect(gameWindow, &GameWindow::gameOverSignal, this, [this]() {
+                    qDebug() << "Game over signal received, stopping background music";
+                    controlBackgroundMusicProcess(false);
+                });
+                
+                // 게임 재시작 시그널 연결 (배경 음악 재시작)
+                connect(gameWindow, &GameWindow::restartRequested, this, [this]() {
+                    qDebug() << "Game restart signal received, starting background music";
+                    controlBackgroundMusicProcess(true);
+                });
+                
                 // 게임 윈도우가 파괴될 때 정리
                 connect(gameWindow, &GameWindow::destroyed, this, [this]() {
                     qDebug() << "Game window destroyed";
+                    // 게임 윈도우가 파괴될 때도 배경 음악 중지
+                    controlBackgroundMusicProcess(false);
                     gameWindow = nullptr;
                 });
                 
@@ -850,6 +880,9 @@ void MainWindow::on_menuButton2_clicked()
             gameWindow = new GameWindow(nullptr, true); // 멀티플레이어 모드
             
             if (gameWindow) {
+                // 게임 시작 시 배경 음악 시작
+                controlBackgroundMusicProcess(true);
+                
                 // 현재 플레이어 이름 설정
                 if (playerDialog) {
                     QString currentPlayer = playerDialog->getCurrentPlayer();
@@ -859,6 +892,9 @@ void MainWindow::on_menuButton2_clicked()
                 // 메인 윈도우로 돌아가는 시그널 연결
                 connect(gameWindow, &GameWindow::requestMainWindow, this, [this]() {
                     qDebug() << "Returning to main window from multiplayer";
+                    // 게임 종료 시 배경 음악 중지
+                    controlBackgroundMusicProcess(false);
+                    
                     if (gameWindow) {
                         gameWindow->disconnect();
                         gameWindow->close();
@@ -870,9 +906,23 @@ void MainWindow::on_menuButton2_clicked()
                     activateWindow();
                 });
                 
+                // 게임 오버 시그널 연결 (배경 음악 중지)
+                connect(gameWindow, &GameWindow::gameOverSignal, this, [this]() {
+                    qDebug() << "Game over signal received, stopping background music";
+                    controlBackgroundMusicProcess(false);
+                });
+                
+                // 게임 재시작 시그널 연결 (배경 음악 재시작)
+                connect(gameWindow, &GameWindow::restartRequested, this, [this]() {
+                    qDebug() << "Game restart signal received, starting background music";
+                    controlBackgroundMusicProcess(true);
+                });
+                
                 // 게임 윈도우가 파괴될 때 정리
                 connect(gameWindow, &GameWindow::destroyed, this, [this]() {
                     qDebug() << "Game window destroyed";
+                    // 게임 윈도우가 파괴될 때도 배경 음악 중지
+                    controlBackgroundMusicProcess(false);
                     gameWindow = nullptr;
                 });
                 
@@ -1068,9 +1118,6 @@ void MainWindow::updateButtonPositions()
     
     // 현재 플레이어 라벨을 상단 중앙에 배치
     currentPlayerLabel->adjustSize();  // 내용에 맞춰 크기 조정
-    
-    // 현재 플레이어 라벨을 상단 중앙에 배치
-    currentPlayerLabel->adjustSize();  // 내용에 맞춰 크기 조정
     QSize labelSize = currentPlayerLabel->size();
     currentPlayerLabel->setGeometry(
         (width() - labelSize.width()) / 2,  // x (중앙)
@@ -1152,6 +1199,51 @@ void MainWindow::updateCurrentPlayerDisplay()
     updateButtonPositions();
 }
 
+// 배경 음악 시작 함수
+void MainWindow::startBackgroundMusic()
+{
+    if (!backgroundMusicEnabled) return;
+    
+    qDebug() << "Starting background music...";
+    backgroundMusicProcess = new QProcess(this);
+    
+    // 프로세스 종료 시그널 연결
+    connect(backgroundMusicProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](int exitCode, QProcess::ExitStatus) {
+        qDebug() << "Background music process finished with exit code:" << exitCode;
+        // 1초 후에 다시 시작
+        backgroundMusicRestartTimer->start(100);
+    });
+    
+    backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+    
+    if (backgroundMusicProcess->waitForStarted(1000)) {
+        qDebug() << "Background music started with aplay.";
+    } else {
+        qDebug() << "Failed to start background music. Trying absolute path...";
+        delete backgroundMusicProcess;
+        
+        // 절대 경로로 시도
+        backgroundMusicProcess = new QProcess(this);
+        connect(backgroundMusicProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this](int exitCode, QProcess::ExitStatus) {
+            qDebug() << "Background music process finished with exit code:" << exitCode;
+            // 1초 후에 다시 시작
+            backgroundMusicRestartTimer->start(100);
+        });
+        
+        backgroundMusicProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+        
+        if (backgroundMusicProcess->waitForStarted(1000)) {
+            qDebug() << "Background music started with absolute path aplay.";
+        } else {
+            qDebug() << "Failed to start background music:" << backgroundMusicProcess->errorString();
+            delete backgroundMusicProcess;
+            backgroundMusicProcess = nullptr;
+        }
+    }
+}
+
 // 리눅스 명령어로 배경 음악 프로세스 제어
 void MainWindow::controlBackgroundMusicProcess(bool start)
 {
@@ -1167,30 +1259,14 @@ void MainWindow::controlBackgroundMusicProcess(bool start)
         QProcess::execute("killall", QStringList() << "-9" << "aplay");
         qDebug() << "Background music process terminated.";
     }
+    
+    // 재시작 타이머 정지
+    if (backgroundMusicRestartTimer) {
+        backgroundMusicRestartTimer->stop();
+    }
 
     if (start) {
-        qDebug() << "Starting background music...";
-        backgroundMusicProcess = new QProcess(this);
-        backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
-        
-        if (backgroundMusicProcess->waitForStarted(1000)) {
-            qDebug() << "Background music started with aplay.";
-        } else {
-            qDebug() << "Failed to start background music. Trying absolute path...";
-            delete backgroundMusicProcess;
-            
-            // 절대 경로로 시도
-            backgroundMusicProcess = new QProcess(this);
-            backgroundMusicProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
-            
-            if (backgroundMusicProcess->waitForStarted(1000)) {
-                qDebug() << "Background music started with absolute path aplay.";
-            } else {
-                qDebug() << "Failed to start background music:" << backgroundMusicProcess->errorString();
-                delete backgroundMusicProcess;
-                backgroundMusicProcess = nullptr;
-            }
-        }
+        startBackgroundMusic();
     } else {
         qDebug() << "Background music disabled.";
     }
