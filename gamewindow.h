@@ -17,6 +17,7 @@
 #include <QApplication>
 #include "gameoverdialog.h"
 #include <QPushButton>
+#include <QFontDatabase> // QFontDatabase 추가
 
 // 멀티플레이어 관련 헤더들
 #include <QUdpSocket>
@@ -46,6 +47,19 @@ struct GameState {
     QList<QPointF> starPositions;
     int currentScore;
     qint64 timestamp;
+};
+
+struct GameFeedbackData {
+    QString message;
+    QPointF position;
+    double startTime;
+    double duration;
+    QColor color;
+    int fontSize;
+    bool active;
+    
+    GameFeedbackData(const QString &msg, const QPointF &pos, const QColor &col = Qt::yellow, int size = 24)
+        : message(msg), position(pos), startTime(0.0), duration(1.5), color(col), fontSize(size), active(true) {}
 };
 
 class GameWindow : public QMainWindow
@@ -91,6 +105,12 @@ private:
     // 폰트 로딩 도우미 함수
     QFont loadSystemFont(const QString &fontName, int size, QFont::Weight weight = QFont::Normal);
     
+    // 피드백 시스템 관련 함수들
+    void addFeedback(const QString &message, const QPointF &position, const QColor &color = Qt::yellow, int fontSize = 24);
+    void updateFeedbacks();
+    void checkPitchAccuracy();
+    void clearFeedbacks();
+    
     // 멀티플레이어 관련 함수들
     void startMultiplayer();
     void stopMultiplayer();
@@ -121,7 +141,11 @@ private:
     QTimer *cleanupTimer;
     QTimer *countdownTimer;
     QString playerId;
-    QList<PlayerData> otherPlayers;
+    QVector<PlayerData> otherPlayers;
+    QVector<PlayerData> finishedPlayers;
+    QVector<GameFeedbackData> feedbacks; // 피드백 메시지들
+    
+    // 멀티플레이어 상태
     bool isMultiplayerMode;
     bool isInLobby;
     bool isGameStarted;
@@ -131,7 +155,6 @@ private:
     qint64 lastGameStateUpdate;
     
     // 멀티플레이어 순위 관련 멤버들
-    QList<PlayerData> finishedPlayers; // 게임이 끝난 플레이어들
     bool isGameFinished; // 전체 게임이 끝났는지 여부
     int myRank; // 내 순위
     
@@ -165,8 +188,13 @@ private:
     
     // 플레이어 정보
     QString currentPlayerName;  // 현재 플레이어 이름 저장
+    double lastSoundTime; // 마지막 사운드 재생 시간
     
-    // 게임 요소 크기
+    // 피드백 시스템 관련 변수들
+    int consecutivePerfect; // 연속 Perfect 횟수
+    double lastFeedbackTime; // 마지막 피드백 시간
+    
+    // 게임 상수
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
     static const int OBSTACLE_WIDTH = 40;  // 장애물 너비
 

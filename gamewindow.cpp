@@ -61,6 +61,9 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , currentPitch(0)
     , currentVolume(0.0f)
     , targetY(300)  // 기본값으로 설정
+    , lastSoundTime(0.0) // 마지막 사운드 재생 시간 초기화
+    , consecutivePerfect(0) // 연속 Perfect 횟수 초기화
+    , lastFeedbackTime(0.0) // 마지막 피드백 시간 초기화
 
 {
     qDebug() << "GameWindow constructor called" << (isMultiplayer ? "(Multiplayer)" : "(Single Player)");
@@ -246,7 +249,11 @@ void GameWindow::setupGame()
     score = 0;
     obstacles.clear();
     stars.clear();
-
+    
+    // 피드백 시스템 초기화
+    consecutivePerfect = 0;
+    lastFeedbackTime = 0.0;
+    clearFeedbacks();
     
     try {
         // 1. 전체화면/geometry/flags를 show() 전에 설정
@@ -646,13 +653,53 @@ void GameWindow::paintEvent(QPaintEvent *event)
     painter.drawText(rightEdge - fm.horizontalAdvance(scoreText), topMargin, scoreText);
     painter.drawText(rightEdge - fm.horizontalAdvance(playerText), topMargin + lineSpacing * 3, playerText);
     
-    // 점수 표시에 고정폭 폰트 사용
+    // 점수 표시에 고정폰트 폰트 사용
     static QFont scoreFont = loadSystemFont("CookieRun Bold", 14);
     painter.setFont(scoreFont);
     painter.drawText(rightEdge - 100, topMargin + lineSpacing * 4, QString("SCORE: %1").arg(score));
     
     // 다시 기본 폰트로 복원
     painter.setFont(infoFont);
+    
+    // 피드백 메시지들 그리기
+    for (const GameFeedbackData &feedback : feedbacks) {
+        if (!feedback.active) continue;
+        
+        // 시간에 따른 투명도 계산
+        double currentTime = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+        double elapsed = currentTime - feedback.startTime;
+        double alpha = 1.0 - (elapsed / feedback.duration);
+        alpha = qBound(0.0, alpha, 1.0);
+        
+        // 색상에 투명도 적용
+        QColor textColor = feedback.color;
+        textColor.setAlphaF(alpha);
+        painter.setPen(textColor);
+        
+        // 폰트 설정
+        QFont feedbackFont = loadSystemFont("CookieRun Bold", feedback.fontSize, QFont::Bold);
+        painter.setFont(feedbackFont);
+        
+        // 텍스트 그림자 효과
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawText(feedback.position + QPointF(2, 2), feedback.message);
+        
+        // 메인 텍스트
+        painter.setPen(textColor);
+        painter.drawText(feedback.position, feedback.message);
+    }
+    
+    // 연속 Perfect 카운터 표시
+    if (consecutivePerfect > 0) {
+        painter.setPen(Qt::white);
+        QFont counterFont = loadSystemFont("CookieRun Bold", 14, QFont::Bold);
+        painter.setFont(counterFont);
+        
+        QString counterText = QString("Perfect x%1").arg(consecutivePerfect);
+        painter.setPen(QColor(255, 255, 0)); // 노란색
+        
+        painter.drawText(10, 60, counterText);
+    }
     
     // 디버그 정보는 조건부로 표시 (성능에 영향 줄이기)
 #ifdef QT_DEBUG
@@ -742,17 +789,10 @@ void GameWindow::updateGame()
         return;
     }
     
-    // 비활성 별 정리 (필요할 때만 처리)
-    const int MAX_STARS = 25;  // 최대 별 개수
-    if (stars.size() > MAX_STARS) {
-        for (int i = stars.size() - 1; i >= 0; --i) {
-            if (!stars[i].active) {
-                stars.removeAt(i);
-            }
-        }
-    }
+    // 피드백 시스템 업데이트
+    updateFeedbacks();
+    checkPitchAccuracy();
     
-
     // 멀티플레이어 모드에서 네트워크 업데이트 - 매 프레임마다 직접 전송
     if (isMultiplayerMode) {
         // 매 프레임마다 위치 전송 (실시간)
@@ -775,7 +815,7 @@ void GameWindow::calculateRankings()
     if (!isMultiplayerMode) return;
     
     // 모든 플레이어 정보를 수집 (자신 포함)
-    QList<PlayerData> allPlayers;
+    QVector<PlayerData> allPlayers;
     
     // 자신의 정보 추가
     PlayerData myData;
@@ -878,7 +918,7 @@ void GameWindow::showMultiplayerResults()
     int rank = 1;
     
     // 모든 플레이어 정보를 수집
-    QList<PlayerData> allPlayers;
+    QVector<PlayerData> allPlayers;
     PlayerData myData;
     myData.playerId = playerId;
     myData.playerName = currentPlayerName;
@@ -1017,6 +1057,15 @@ bool GameWindow::checkCollision()
 {
     for (const QRect &obstacle : obstacles) {
         if (player.intersects(obstacle)) {
+            // 연속 Perfect 카운터 리셋
+            consecutivePerfect = 0;
+            
+            // 기존 피드백 메시지 모두 제거
+            clearFeedbacks();
+            
+            // 충돌 피드백 표시
+            addFeedback("MISS!", QPointF(player.x() + 50, player.y() - 30), QColor(255, 0, 0), 20);
+            
             // 충돌 소리 재생
             playSound("/mnt/nfs/wav/scratch.wav");
             return true;
@@ -1035,6 +1084,9 @@ void GameWindow::gameOver()
     }
     
     stopMicProcess();
+    
+    // 피드백 시스템 정리
+    clearFeedbacks();
     
     if (gameTimer) {
         gameTimer->stop();
@@ -1892,4 +1944,87 @@ void GameWindow::processGameState(const QJsonObject &gameState)
         qDebug() << "Game state received - Obstacles:" << obstacles.size() << "Stars:" << stars.size();
     }
 
+}
+
+void GameWindow::addFeedback(const QString &message, const QPointF &position, const QColor &color, int fontSize)
+{
+    GameFeedbackData feedback(message, position, color, fontSize);
+    feedback.startTime = QDateTime::currentMSecsSinceEpoch() / 1000.0; // 현재 시간을 초 단위로
+    feedbacks.append(feedback);
+    
+    // 최대 5개의 피드백만 유지
+    if (feedbacks.size() > 5) {
+        feedbacks.removeFirst();
+    }
+}
+
+void GameWindow::updateFeedbacks()
+{
+    double currentTime = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    
+    // 시간이 지난 피드백 제거
+    for (int i = feedbacks.size() - 1; i >= 0; --i) {
+        if (currentTime - feedbacks[i].startTime > feedbacks[i].duration) {
+            feedbacks.removeAt(i);
+        }
+    }
+}
+
+void GameWindow::checkPitchAccuracy()
+{
+    if (!gameRunning) return;
+    
+    // 플레이어가 장애물을 통과하는 시점인지 확인
+    bool passingObstacle = false;
+    for (const QRect &obstacle : obstacles) {
+        // 플레이어가 장애물을 통과하는 순간 (플레이어가 장애물의 오른쪽 끝에 도달했을 때)
+        if (player.x() >= obstacle.x() + obstacle.width() && 
+            player.x() <= obstacle.x() + obstacle.width() + 10) {
+            passingObstacle = true;
+            break;
+        }
+    }
+    
+    if (!passingObstacle) return;
+    
+    // 장애물 통과 성공! (충돌하지 않고 통과했다는 것은 성공)
+    consecutivePerfect++;
+    
+    // 기존 피드백 메시지 모두 제거 (겹침 방지)
+    clearFeedbacks();
+    
+    // 연속 Perfect에 따른 피드백
+    QString message;
+    QColor color;
+    int fontSize;
+    
+    if (consecutivePerfect >= 10) {
+        message = "LEGENDARY!";
+        color = QColor(255, 0, 255); // 마젠타
+        fontSize = 32;
+    } else if (consecutivePerfect >= 7) {
+        message = "AMAZING!";
+        color = QColor(255, 165, 0); // 주황색
+        fontSize = 30;
+    } else if (consecutivePerfect >= 5) {
+        message = "FANTASTIC!";
+        color = QColor(0, 255, 255); // 시안
+        fontSize = 28;
+    } else if (consecutivePerfect >= 3) {
+        message = "EXCELLENT!";
+        color = QColor(0, 255, 0); // 초록색
+        fontSize = 26;
+    } else {
+        message = "PERFECT!";
+        color = QColor(255, 255, 0); // 노란색
+        fontSize = 24;
+    }
+    
+    addFeedback(message, QPointF(player.x() + 50, player.y() - 30), color, fontSize);
+    lastFeedbackTime = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+}
+
+void GameWindow::clearFeedbacks()
+{
+    feedbacks.clear();
 }
