@@ -528,26 +528,98 @@ void GameWindow::paintEvent(QPaintEvent *event)
         painter.restore();
     }
     
-    // 장애물 그리기 (상단/하단 이미지로 대체)
-    static QPixmap obstacleTopPixmap, obstacleBottomPixmap;
-    static bool obstaclesLoaded = false;
-    if (!obstaclesLoaded) {
-        obstacleTopPixmap.load("/mnt/nfs/obstacle_top.png");
-        obstacleBottomPixmap.load("/mnt/nfs/obstacle_bottom.png");
-        obstaclesLoaded = true;
+    // 장애물 그리기 (새로운 파이프 이미지로 대체)
+    static QPixmap pipeTopCapPixmap, pipeBottomCapPixmap, pipeMiddleBodyPixmap;
+    static bool pipeImagesLoaded = false;
+    static int lastObstacleWidth = 0;  // 마지막으로 사용된 너비 추적
+    
+    // OBSTACLE_WIDTH가 변경되었으면 캐시 초기화
+    if (lastObstacleWidth != OBSTACLE_WIDTH) {
+        qDebug() << "OBSTACLE_WIDTH changed from" << lastObstacleWidth << "to" << OBSTACLE_WIDTH;
+        pipeImagesLoaded = false;
+        lastObstacleWidth = OBSTACLE_WIDTH;
+    }
+    
+    if (!pipeImagesLoaded) {
+        qDebug() << "Loading pipe images with OBSTACLE_WIDTH:" << OBSTACLE_WIDTH;
+        QPixmap originalTopCap, originalBottomCap, originalMiddleBody;
+        originalTopCap.load("/mnt/nfs/pipe_top_cap.png");
+        originalBottomCap.load("/mnt/nfs/pipe_bottom_cap.png");
+        originalMiddleBody.load("/mnt/nfs/pipe_middle_body.png");
+        
+        // OBSTACLE_WIDTH에 맞게 스케일링
+        if (!originalTopCap.isNull()) {
+            pipeTopCapPixmap = originalTopCap.scaled(OBSTACLE_WIDTH, originalTopCap.height(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+            qDebug() << "Top cap scaled to:" << pipeTopCapPixmap.width() << "x" << pipeTopCapPixmap.height();
+        }
+        if (!originalBottomCap.isNull()) {
+            pipeBottomCapPixmap = originalBottomCap.scaled(OBSTACLE_WIDTH, originalBottomCap.height(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+            qDebug() << "Bottom cap scaled to:" << pipeBottomCapPixmap.width() << "x" << pipeBottomCapPixmap.height();
+        }
+        if (!originalMiddleBody.isNull()) {
+            pipeMiddleBodyPixmap = originalMiddleBody.scaled(OBSTACLE_WIDTH, originalMiddleBody.height(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+            qDebug() << "Middle body scaled to:" << pipeMiddleBodyPixmap.width() << "x" << pipeMiddleBodyPixmap.height();
+        }
+        pipeImagesLoaded = true;
+        qDebug() << "Pipe images loaded successfully";
     }
     
     for (int i = 0; i < obstacles.size(); ++i) {
         const QRect &obstacle = obstacles[i];
-        // 상단 장애물: y==0, 하단 장애물: y>0
-        if (obstacle.y() == 0 && !obstacleTopPixmap.isNull()) {
-            painter.drawPixmap(obstacle, obstacleTopPixmap);
-        } else if (obstacle.y() > 0 && !obstacleBottomPixmap.isNull()) {
-            painter.drawPixmap(obstacle, obstacleBottomPixmap);
-        } else {
-            painter.setBrush(Qt::red);
-            painter.setPen(Qt::NoPen);
-            painter.drawRect(obstacle);
+        
+        // 상단 장애물: y==0
+        if (obstacle.y() == 0) {
+            if (!pipeTopCapPixmap.isNull()) {
+                // 상단 캡을 맨 아래에 그리기 (장애물의 끝 부분)
+                int capY = obstacle.y() + obstacle.height() - pipeTopCapPixmap.height();
+                painter.drawPixmap(obstacle.x(), capY, pipeTopCapPixmap);
+                
+                // 중간 부분이 필요한 경우 덧붙이기 (상단 캡 위부터)
+                int remainingHeight = obstacle.height() - pipeTopCapPixmap.height();
+                if (remainingHeight > 0 && !pipeMiddleBodyPixmap.isNull()) {
+                    int bodyHeight = pipeMiddleBodyPixmap.height();
+                    int currentY = obstacle.y();
+                    
+                    // 중간 부분을 반복해서 채우기
+                    while (currentY < capY) {
+                        int drawHeight = qMin(bodyHeight, capY - currentY);
+                        painter.drawPixmap(obstacle.x(), currentY, pipeMiddleBodyPixmap.width(), drawHeight, pipeMiddleBodyPixmap);
+                        currentY += bodyHeight;
+                    }
+                }
+            } else {
+                // 이미지가 없을 경우 기본 빨간색 사각형
+                painter.setBrush(Qt::red);
+                painter.setPen(Qt::NoPen);
+                painter.drawRect(obstacle);
+            }
+        }
+        // 하단 장애물: y>0
+        else if (obstacle.y() > 0) {
+            if (!pipeBottomCapPixmap.isNull()) {
+                // 하단 캡을 맨 위에 그리기 (장애물의 시작 부분)
+                painter.drawPixmap(obstacle.x(), obstacle.y(), pipeBottomCapPixmap);
+                
+                // 중간 부분이 필요한 경우 덧붙이기 (하단 캡 아래부터)
+                int remainingHeight = obstacle.height() - pipeBottomCapPixmap.height();
+                if (remainingHeight > 0 && !pipeMiddleBodyPixmap.isNull()) {
+                    int middleY = obstacle.y() + pipeBottomCapPixmap.height();
+                    int bodyHeight = pipeMiddleBodyPixmap.height();
+                    int currentY = middleY;
+                    
+                    // 중간 부분을 반복해서 채우기
+                    while (currentY < obstacle.y() + obstacle.height()) {
+                        int drawHeight = qMin(bodyHeight, obstacle.y() + obstacle.height() - currentY);
+                        painter.drawPixmap(obstacle.x(), currentY, pipeMiddleBodyPixmap.width(), drawHeight, pipeMiddleBodyPixmap);
+                        currentY += bodyHeight;
+                    }
+                }
+            } else {
+                // 이미지가 없을 경우 기본 빨간색 사각형
+                painter.setBrush(Qt::red);
+                painter.setPen(Qt::NoPen);
+                painter.drawRect(obstacle);
+            }
         }
     }
     
@@ -815,6 +887,10 @@ void GameWindow::spawnObstacles()
     // 아래쪽 장애물
     QRect bottomObstacle(width(), gapY + randomGap/2, OBSTACLE_WIDTH, height() - (gapY + randomGap/2));
     obstacles.append(bottomObstacle);
+    
+    qDebug() << "Created obstacles with width:" << OBSTACLE_WIDTH;
+    qDebug() << "Top obstacle:" << topObstacle;
+    qDebug() << "Bottom obstacle:" << bottomObstacle;
 
     // 별 생성 확률은 그대로
     if (fixedGenerator.bounded(100) < 20) {
@@ -829,18 +905,13 @@ void GameWindow::spawnObstacles()
 bool GameWindow::checkCollision()
 {
     for (int i = 0; i < obstacles.size(); i += 2) {
-        // 상단 장애물 (아래쪽 부분만 충돌 감지 줄임)
+        // 상단 장애물 (정확한 충돌 감지)
         QRect topObstacle = obstacles[i];
-        // 장애물 높이에 비례해서 여유 계산 (40x81 기준 7픽셀)
-        int topMargin = qRound(topObstacle.height() * 7.0 / 81.0);
-        QRect topCollisionRect = topObstacle.adjusted(0, 0, 0, -topMargin);
         
-        // 하단 장애물 (위쪽 부분만 충돌 감지 줄임)
+        // 하단 장애물 (정확한 충돌 감지)
         QRect bottomObstacle = obstacles[i + 1];
-        int bottomMargin = qRound(bottomObstacle.height() * 7.0 / 81.0);
-        QRect bottomCollisionRect = bottomObstacle.adjusted(0, bottomMargin, 0, 0);
         
-        if (player.intersects(topCollisionRect) || player.intersects(bottomCollisionRect)) {
+        if (player.intersects(topObstacle) || player.intersects(bottomObstacle)) {
             // 충돌 소리 재생
             playSound("/mnt/nfs/wav/scratch.wav");
             return true;

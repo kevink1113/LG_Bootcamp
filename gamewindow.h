@@ -157,7 +157,7 @@ private:
     
     // 게임 요소 크기
     static const int PLAYER_SIZE = 30;  // 플레이어 크기
-    static const int OBSTACLE_WIDTH = 50;  // 장애물 너비 (40에서 50으로 증가)
+    static const int OBSTACLE_WIDTH = 60;  // 장애물 너비 (160에서 60으로 줄임)
 
 
     static const int OBSTACLE_GAP = 300;  // 장애물 사이 간격 (300으로 증가)
