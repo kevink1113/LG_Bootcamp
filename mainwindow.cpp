@@ -1211,8 +1211,8 @@ void MainWindow::startBackgroundMusic()
     connect(backgroundMusicProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus) {
         qDebug() << "Background music process finished with exit code:" << exitCode;
-        // 1초 후에 다시 시작
-gi        backgroundMusicRestartTimer->start(100);
+        // 100ms 후에 다시 시작
+        backgroundMusicRestartTimer->start(100);
     });
     
     backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
