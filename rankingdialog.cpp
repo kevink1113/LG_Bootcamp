@@ -221,13 +221,32 @@ void RankingDialog::updateRankingDisplay()
             
             QWidget* rankItem = new QWidget(rankingListWidget);
             rankItem->setFixedHeight(50);
+            
+            // 1등, 2등, 3등에 대한 특별한 스타일 적용
+            QString backgroundColor;
+            QString borderColor;
+            if (currentRank == 1) {
+                backgroundColor = "#fff8e1"; // 금색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else if (currentRank == 2) {
+                backgroundColor = "#f5f5f5"; // 은색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else if (currentRank == 3) {
+                backgroundColor = "#fff3e0"; // 동색 배경
+                borderColor = "transparent"; // 테두리 제거
+            } else {
+                backgroundColor = "#ffffff";
+                borderColor = "transparent";
+            }
+            
             rankItem->setStyleSheet(QString(R"(
                 QWidget {
                     background-color: %1;
-                    border-radius: 10px;
-                    margin: 2px;
+                    border: none;
+                    border-radius: 8px;
+                    margin: 1px;
                 }
-            )").arg(currentRank <= 3 ? "#f0f9ff" : "#ffffff"));
+            )").arg(backgroundColor));
             
             QHBoxLayout* itemLayout = new QHBoxLayout(rankItem);
             itemLayout->setContentsMargins(15, 0, 15, 0);
@@ -242,19 +261,21 @@ void RankingDialog::updateRankingDisplay()
                 }
             )").arg(currentRank <= 3 ? "#2980b9" : "#7f8c8d"));
             rankNum->setFixedWidth(30);
-            
-            // 플레이어 이름
-            QLabel* playerLabel = new QLabel(record.playerName, rankItem);
-            playerLabel->setStyleSheet("font-size: 16px; color: #34495e;");
-            playerLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            rankNum->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             
             // 점수 (오른쪽에 배치)
             QLabel* scoreLabel = new QLabel(QString("%1 pt").arg(record.score), rankItem);
             scoreLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #e67e22;");
             scoreLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            scoreLabel->setFixedWidth(80);
+            
+            // 플레이어 이름 (가운데 정렬)
+            QLabel* playerLabel = new QLabel(record.playerName, rankItem);
+            playerLabel->setStyleSheet("font-size: 16px; color: #34495e;");
+            playerLabel->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
             
             itemLayout->addWidget(rankNum);
-            itemLayout->addWidget(playerLabel, 1);  // stretch factor 1로 확장
+            itemLayout->addWidget(playerLabel, 1);  // stretch factor 1로 확장하여 가운데 배치
             itemLayout->addWidget(scoreLabel);
             
             rankingLayout->addWidget(rankItem);

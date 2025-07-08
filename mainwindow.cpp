@@ -1212,7 +1212,7 @@ void MainWindow::startBackgroundMusic()
             this, [this](int exitCode, QProcess::ExitStatus) {
         qDebug() << "Background music process finished with exit code:" << exitCode;
         // 1초 후에 다시 시작
-        backgroundMusicRestartTimer->start(100);
+gi        backgroundMusicRestartTimer->start(100);
     });
     
     backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
