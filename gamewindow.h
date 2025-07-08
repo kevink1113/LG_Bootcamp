@@ -35,6 +35,10 @@ struct PlayerData {
     QHostAddress address;
     quint16 port;
     qint64 lastSeen;
+    
+    // 게임 오버 상태 표시를 위한 필드
+    qint64 gameOverTime; // 게임 오버된 시간
+    QString playerName; // 플레이어 이름
 };
 
 struct GameState {
@@ -71,7 +75,6 @@ private slots:
     
     // 멀티플레이어 관련 슬롯들
     void readPendingDatagrams();
-    void broadcastPlayerData();
     void cleanupInactivePlayers();
     void startGameCountdown();
 
@@ -90,13 +93,16 @@ private:
     void startMultiplayer();
     void stopMultiplayer();
     void updatePlayerPosition(int x, int y, int score, bool gameOver);
-    void sendPlayerData();
     void processIncomingData(const QByteArray &data, const QHostAddress &sender, quint16 port);
+    void processPositionPacket(QDataStream &stream, const QHostAddress &sender, quint16 port);
+    void processJsonData(const QByteArray &data, const QHostAddress &sender, quint16 port);
     void sendGameState();
     void processGameState(const QJsonObject &gameState);
     void startLobby();
     void leaveLobby();
     void checkGameStart();
+    void calculateRankings(); // 순위 계산 함수 추가
+    void showMultiplayerResults(); // 멀티플레이어 결과 표시 함수 추가
 
 
     QTimer *gameTimer;
@@ -121,6 +127,11 @@ private:
     int countdownValue;
     GameState sharedGameState;
     qint64 lastGameStateUpdate;
+    
+    // 멀티플레이어 순위 관련 멤버들
+    QList<PlayerData> finishedPlayers; // 게임이 끝난 플레이어들
+    bool isGameFinished; // 전체 게임이 끝났는지 여부
+    int myRank; // 내 순위
     
     QRect player;
     QVector<QRect> obstacles;  // QList 대신 QVector 사용
@@ -170,7 +181,7 @@ private:
     
     // 멀티플레이어 상수들
     static const quint16 BROADCAST_PORT = 12345;
-    static const int BROADCAST_INTERVAL = 100; // 100ms
+    static const int BROADCAST_INTERVAL = 16; // 16ms (60fps로 증가)
     static const int CLEANUP_INTERVAL = 2000; // 2초
     static const int PLAYER_TIMEOUT = 3000; // 3초
     static const quint32 FIXED_SEED = 0xDEADBEEF; // 더 복잡한 고정된 랜덤 시드값

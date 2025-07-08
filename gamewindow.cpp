@@ -18,6 +18,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QHostAddress>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QTextEdit>
+#include <QPushButton>
+#include <QFrame>
+#include <algorithm>
+#include <QDataStream>
+#include <QThread>
 
 
 GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
@@ -40,6 +50,8 @@ GameWindow::GameWindow(QWidget *parent, bool isMultiplayer)
     , isHost(false)
     , countdownValue(0)
     , lastGameStateUpdate(0)
+    , isGameFinished(false) // 게임 종료 상태 초기화
+    , myRank(0) // 내 순위 초기화
     , playerSpeed(5)
     , score(0)
     , gameRunning(false)
@@ -113,6 +125,7 @@ GameWindow::~GameWindow()
         countdownTimer = nullptr;
         qDebug() << "countdownTimer deleted.";
     }
+
     if (broadcastTimer) {
         qDebug() << "Deleting broadcastTimer...";
         broadcastTimer->stop();
@@ -207,7 +220,7 @@ void GameWindow::setupGame()
         gameTimer = new QTimer(this);
         connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
     }
-    gameTimer->start(16); // 약 60 FPS
+    gameTimer->start(8); // 약 120 FPS (더 부드러운 움직임)
     
     if (!obstacleTimer) {
         obstacleTimer = new QTimer(this);
@@ -266,7 +279,7 @@ void GameWindow::setupGame()
             gameTimer = new QTimer(this);
             if (gameTimer) {
                 connect(gameTimer, &QTimer::timeout, this, &GameWindow::updateGame);
-                gameTimer->start(16); // 약 60 FPS
+                gameTimer->start(8); // 약 120 FPS (더 부드러운 움직임)
             }
         }
         
@@ -533,16 +546,36 @@ void GameWindow::paintEvent(QPaintEvent *event)
 
     // 멀티플레이어 모드에서 다른 플레이어들 그리기
     if (isMultiplayerMode) {
-        painter.setBrush(Qt::blue);
-        painter.setPen(Qt::blue);
         for (const PlayerData &otherPlayer : otherPlayers) {
-            // 다른 플레이어를 파란색 원으로 그리기
+            // 게임 오버된 플레이어는 빨간색, 활성 플레이어는 파란색
+            if (otherPlayer.gameOver) {
+                painter.setBrush(Qt::red);
+                painter.setPen(Qt::red);
+            } else {
+                painter.setBrush(Qt::blue);
+                painter.setPen(Qt::blue);
+            }
+            
+            // 다른 플레이어를 원으로 그리기
             painter.drawEllipse(otherPlayer.x, otherPlayer.y, PLAYER_SIZE, PLAYER_SIZE);
             
-            // 플레이어 ID를 흰색으로 표시
+            // 플레이어 정보 표시
             painter.setPen(Qt::white);
-            painter.drawText(otherPlayer.x, otherPlayer.y - 5, otherPlayer.playerId);
-            painter.setPen(Qt::blue);
+            QString playerInfo = otherPlayer.playerName.isEmpty() ? 
+                otherPlayer.playerId : otherPlayer.playerName;
+            
+            if (otherPlayer.gameOver) {
+                playerInfo += " (GAME OVER)";
+                painter.setPen(Qt::red);
+            }
+            
+            painter.drawText(otherPlayer.x, otherPlayer.y - 5, playerInfo);
+            
+            // 게임 오버된 플레이어의 점수도 표시
+            if (otherPlayer.gameOver) {
+                QString scoreText = QString("Score: %1").arg(otherPlayer.score);
+                painter.drawText(otherPlayer.x, otherPlayer.y + PLAYER_SIZE + 15, scoreText);
+            }
         }
         
         // 대기실 화면 그리기
@@ -584,6 +617,13 @@ void GameWindow::paintEvent(QPaintEvent *event)
         // 멀티플레이어 모드임을 표시
         painter.setPen(Qt::white);
         painter.drawText(10, 25, QString("Multiplayer Mode - Players: %1").arg(otherPlayers.size() + 1));
+        
+        // 게임 중일 때 현재 순위 표시
+        if (isGameStarted && gameRunning) {
+            calculateRankings(); // 실시간 순위 계산
+            QString rankText = QString("Your Rank: %1/%2").arg(myRank).arg(otherPlayers.size() + 1);
+            painter.drawText(10, 45, rankText);
+        }
     }
     
     // 점수와 피치 정보 표시 (오른쪽 상단)
@@ -704,13 +744,14 @@ void GameWindow::updateGame()
     }
     
 
-    // 멀티플레이어 모드에서 네트워크 업데이트
+    // 멀티플레이어 모드에서 네트워크 업데이트 - 매 프레임마다 직접 전송
     if (isMultiplayerMode) {
+        // 매 프레임마다 위치 전송 (실시간)
         updatePlayerPosition(player.x(), player.y(), score, false);
         
-        // 호스트가 주기적으로 게임 상태 전송 (2초마다)
+        // 호스트가 주기적으로 게임 상태 전송 (1초마다)
         static int frameCount = 0;
-        if (isHost && isGameStarted && frameCount % 120 == 0) { // 120프레임마다 (약 2초)
+        if (isHost && isGameStarted && frameCount % 120 == 0) { // 120프레임마다 (약 1초)
             sendGameState();
         }
         frameCount++;
@@ -718,6 +759,196 @@ void GameWindow::updateGame()
     
     // 화면 갱신
     update();
+}
+
+void GameWindow::calculateRankings()
+{
+    if (!isMultiplayerMode) return;
+    
+    // 모든 플레이어 정보를 수집 (자신 포함)
+    QList<PlayerData> allPlayers;
+    
+    // 자신의 정보 추가
+    PlayerData myData;
+    myData.playerId = playerId;
+    myData.playerName = currentPlayerName;
+    myData.score = score;
+    myData.gameOver = !gameRunning;
+    myData.gameOverTime = !gameRunning ? QDateTime::currentMSecsSinceEpoch() : 0;
+    allPlayers.append(myData);
+    
+    // 다른 플레이어들 추가
+    allPlayers.append(otherPlayers);
+    
+    // 점수와 게임 오버 시간으로 정렬 (높은 점수 우선, 같은 점수면 먼저 끝난 사람이 높은 순위)
+    std::sort(allPlayers.begin(), allPlayers.end(), [](const PlayerData &a, const PlayerData &b) {
+        if (a.score != b.score) {
+            return a.score > b.score; // 높은 점수 우선
+        }
+        // 같은 점수면 게임 오버 시간이 빠른 사람이 높은 순위
+        if (a.gameOver && b.gameOver) {
+            return a.gameOverTime < b.gameOverTime;
+        }
+        // 아직 게임 중인 사람이 더 높은 순위
+        return !a.gameOver && b.gameOver;
+    });
+    
+    // 내 순위 찾기
+    for (int i = 0; i < allPlayers.size(); ++i) {
+        if (allPlayers[i].playerId == playerId) {
+            myRank = i + 1;
+            break;
+        }
+    }
+    
+    // 게임이 끝난 플레이어들 저장
+    finishedPlayers.clear();
+    for (const PlayerData &player : allPlayers) {
+        if (player.gameOver) {
+            finishedPlayers.append(player);
+        }
+    }
+    
+    qDebug() << "Rankings calculated. My rank:" << myRank << "out of" << allPlayers.size();
+}
+
+void GameWindow::showMultiplayerResults()
+{
+    if (!isMultiplayerMode) return;
+    
+    // 순위 계산
+    calculateRankings();
+    
+    // 결과 다이얼로그 생성
+    QDialog *resultDialog = new QDialog(this);
+    resultDialog->setWindowTitle("Multiplayer Results");
+    resultDialog->setFixedSize(400, 300);
+    resultDialog->setModal(true);
+    
+    QVBoxLayout *layout = new QVBoxLayout(resultDialog);
+    
+    // 제목
+    QLabel *titleLabel = new QLabel("Game Results", resultDialog);
+    titleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont("Arial", 16, QFont::Bold);
+    titleLabel->setFont(titleFont);
+    layout->addWidget(titleLabel);
+    
+    // 내 순위 표시
+    QString rankText = QString("Your Rank: %1/%2").arg(myRank).arg(finishedPlayers.size() + 1);
+    QLabel *rankLabel = new QLabel(rankText, resultDialog);
+    rankLabel->setAlignment(Qt::AlignCenter);
+    QFont rankFont("Arial", 14, QFont::Bold);
+    rankLabel->setFont(rankFont);
+    rankLabel->setStyleSheet("color: #FFD700;"); // 금색
+    layout->addWidget(rankLabel);
+    
+    // 내 점수
+    QString scoreText = QString("Your Score: %1").arg(score);
+    QLabel *scoreLabel = new QLabel(scoreText, resultDialog);
+    scoreLabel->setAlignment(Qt::AlignCenter);
+    scoreLabel->setFont(QFont("Arial", 12));
+    layout->addWidget(scoreLabel);
+    
+    // 구분선
+    QFrame *line = new QFrame(resultDialog);
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    layout->addWidget(line);
+    
+    // 전체 순위표
+    QLabel *rankingTitle = new QLabel("Final Rankings:", resultDialog);
+    rankingTitle->setFont(QFont("Arial", 12, QFont::Bold));
+    layout->addWidget(rankingTitle);
+    
+    QTextEdit *rankingText = new QTextEdit(resultDialog);
+    rankingText->setReadOnly(true);
+    rankingText->setMaximumHeight(150);
+    
+    QString rankingString;
+    int rank = 1;
+    
+    // 모든 플레이어 정보를 수집
+    QList<PlayerData> allPlayers;
+    PlayerData myData;
+    myData.playerId = playerId;
+    myData.playerName = currentPlayerName;
+    myData.score = score;
+    myData.gameOver = !gameRunning;
+    allPlayers.append(myData);
+    allPlayers.append(otherPlayers);
+    
+    // 정렬
+    std::sort(allPlayers.begin(), allPlayers.end(), [](const PlayerData &a, const PlayerData &b) {
+        if (a.score != b.score) {
+            return a.score > b.score;
+        }
+        if (a.gameOver && b.gameOver) {
+            return a.gameOverTime < b.gameOverTime;
+        }
+        return !a.gameOver && b.gameOver;
+    });
+    
+    for (const PlayerData &player : allPlayers) {
+        QString playerName = player.playerName.isEmpty() ? player.playerId : player.playerName;
+        if (player.playerId == playerId) {
+            playerName += " (You)";
+        }
+        
+        rankingString += QString("%1. %2 - Score: %3\n")
+                        .arg(rank)
+                        .arg(playerName)
+                        .arg(player.score);
+        rank++;
+    }
+    
+    rankingText->setPlainText(rankingString);
+    layout->addWidget(rankingText);
+    
+    // 버튼들
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
+    QPushButton *mainMenuButton = new QPushButton("Main Menu", resultDialog);
+    QPushButton *restartButton = new QPushButton("Play Again", resultDialog);
+    
+    buttonLayout->addWidget(mainMenuButton);
+    buttonLayout->addWidget(restartButton);
+    layout->addLayout(buttonLayout);
+    
+    // 버튼 연결
+    connect(mainMenuButton, &QPushButton::clicked, this, [this, resultDialog]() {
+        resultDialog->accept();
+        emit requestMainWindow();
+        close();
+    });
+    
+    connect(restartButton, &QPushButton::clicked, this, [this, resultDialog]() {
+        resultDialog->accept();
+        // 게임 재시작
+        gameRunning = true;
+        score = 0;
+        obstacles.clear();
+        stars.clear();
+        isGameFinished = false;
+        myRank = 0;
+        finishedPlayers.clear();
+        
+        // 플레이어 위치 초기화
+        player.moveTop(height()/2 - PLAYER_SIZE/2);
+        
+        // 타이머 재시작
+        if (gameTimer) gameTimer->start();
+        if (obstacleTimer) obstacleTimer->start();
+        if (pitchTimer) pitchTimer->start();
+        
+        // 마이크 프로세스 재시작
+        startMicProcess();
+        
+        update();
+    });
+    
+    resultDialog->exec();
+    resultDialog->deleteLater();
 }
 
 void GameWindow::spawnObstacles()
@@ -802,47 +1033,54 @@ void GameWindow::gameOver()
         pitchTimer->stop();
     }
     
-    GameOverDialog *dialog = new GameOverDialog(score, currentPlayerName, this);
-    
-    connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
-        // 메인 윈도우로 돌아가라는 시그널 발생
-        emit requestMainWindow();
-        // 게임 윈도우 닫기
-        close();
-    });
-    
-    connect(dialog, &GameOverDialog::rankingRequested, this, []() {
-        // Ranking 기능은 나중에 구현
-    });
-    
-    connect(dialog, &GameOverDialog::restartRequested, this, [this]() {
-        // 게임 재시작
-        gameRunning = true;
-        score = 0;
-        obstacles.clear();
-        stars.clear();
+    // 멀티플레이어 모드에서는 멀티플레이어 결과 표시
+    if (isMultiplayerMode) {
+        // 잠시 대기하여 다른 플레이어들의 게임 오버 상태를 받을 시간을 줌
+        QTimer::singleShot(2000, this, &GameWindow::showMultiplayerResults);
+    } else {
+        // 싱글플레이어 모드에서는 기존 GameOverDialog 사용
+        GameOverDialog *dialog = new GameOverDialog(score, currentPlayerName, this);
         
-        // 플레이어 위치 초기화
-        player.moveTop(height()/2 - PLAYER_SIZE/2);
+        connect(dialog, &GameOverDialog::mainMenuRequested, this, [this]() {
+            // 메인 윈도우로 돌아가라는 시그널 발생
+            emit requestMainWindow();
+            // 게임 윈도우 닫기
+            close();
+        });
         
-        // 타이머 재시작
-        if (gameTimer) gameTimer->start();
-        if (obstacleTimer) obstacleTimer->start();
-        if (pitchTimer) pitchTimer->start();
+        connect(dialog, &GameOverDialog::rankingRequested, this, []() {
+            // Ranking 기능은 나중에 구현
+        });
         
-        // 마이크 프로세스 재시작
-        startMicProcess();
+        connect(dialog, &GameOverDialog::restartRequested, this, [this]() {
+            // 게임 재시작
+            gameRunning = true;
+            score = 0;
+            obstacles.clear();
+            stars.clear();
+            
+            // 플레이어 위치 초기화
+            player.moveTop(height()/2 - PLAYER_SIZE/2);
+            
+            // 타이머 재시작
+            if (gameTimer) gameTimer->start();
+            if (obstacleTimer) obstacleTimer->start();
+            if (pitchTimer) pitchTimer->start();
+            
+            // 마이크 프로세스 재시작
+            startMicProcess();
+            
+            update();
+        });
         
-        update();
-    });
-    
-    // 비모달로 표시 (show() 사용, exec() 대신)
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
-    
-    // 다이얼로그가 닫힐 때 자동으로 삭제되도록 설정
-    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
+        // 비모달로 표시 (show() 사용, exec() 대신)
+        dialog->show();
+        dialog->raise();
+        dialog->activateWindow();
+        
+        // 다이얼로그가 닫힐 때 자동으로 삭제되도록 설정
+        dialog->setAttribute(Qt::WA_DeleteOnClose, true);
+    }
 }
 
 void GameWindow::keyPressEvent(QKeyEvent *event)
@@ -1000,11 +1238,11 @@ void GameWindow::startMultiplayer()
     }
     
     if (cleanupTimer) {
+        qDebug() << "[stopMultiplayer] Deleting cleanupTimer...";
         cleanupTimer->stop();
         cleanupTimer->deleteLater();
         cleanupTimer = nullptr;
     }
-    
     // UDP 소켓 생성
     udpSocket = new QUdpSocket(this);
     if (!udpSocket) {
@@ -1012,28 +1250,29 @@ void GameWindow::startMultiplayer()
         return;
     }
     
-    // 소켓 바인딩 시도
-    if (!udpSocket->bind(BROADCAST_PORT, QUdpSocket::ShareAddress)) {
+    // 소켓 버퍼 크기 증가로 네트워크 성능 개선
+    udpSocket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 65536);
+    udpSocket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 65536);
+    
+    // 소켓 우선순위 설정 (가능한 경우)
+    udpSocket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+    
+    // 소켓 바인딩 시도 - 모든 인터페이스에서 수신
+    if (!udpSocket->bind(QHostAddress::Any, BROADCAST_PORT, QUdpSocket::ShareAddress)) {
         qDebug() << "Failed to bind UDP socket to port" << BROADCAST_PORT;
         udpSocket->deleteLater();
         udpSocket = nullptr;
         return;
     }
     
-    // 브로드캐스트 주소로 바인딩 (실패해도 계속 진행)
-    if (!udpSocket->joinMulticastGroup(QHostAddress("192.168.10.255"))) {
-        qDebug() << "Failed to join multicast group, continuing with unicast";
-    }
-    
     // 데이터그램 읽기 시그널 연결
     connect(udpSocket, &QUdpSocket::readyRead, this, &GameWindow::readPendingDatagrams);
     
-    // 브로드캐스트 타이머 설정
-    broadcastTimer = new QTimer(this);
-    if (broadcastTimer) {
-        connect(broadcastTimer, &QTimer::timeout, this, &GameWindow::broadcastPlayerData);
-        broadcastTimer->start(BROADCAST_INTERVAL);
-    }
+    // 소켓 에러 시그널 연결
+    connect(udpSocket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error),
+            this, [this](QAbstractSocket::SocketError error) {
+        qDebug() << "UDP Socket error:" << error << udpSocket->errorString();
+    });
     
     // 클린업 타이머 설정
     cleanupTimer = new QTimer(this);
@@ -1043,6 +1282,9 @@ void GameWindow::startMultiplayer()
     }
     
     qDebug() << "Multiplayer mode started successfully";
+    qDebug() << "UDP Socket bound to port" << BROADCAST_PORT;
+    qDebug() << "Local address:" << udpSocket->localAddress().toString();
+    qDebug() << "Local port:" << udpSocket->localPort();
 }
 
 void GameWindow::stopMultiplayer()
@@ -1084,31 +1326,43 @@ void GameWindow::updatePlayerPosition(int x, int y, int score, bool gameOver)
     if (!isMultiplayerMode || !udpSocket) return;
     
     try {
-        QJsonObject data;
-        data["type"] = "player_update";
-        data["playerId"] = playerId;
-        data["x"] = x;
-        data["y"] = y;
-        data["score"] = score;
-        data["gameOver"] = gameOver;
-        data["timestamp"] = QDateTime::currentMSecsSinceEpoch();
+        // 바이너리 프로토콜로 최적화 (JSON 대신)
+        QByteArray datagram;
+        QDataStream stream(&datagram, QIODevice::WriteOnly);
         
-        QJsonDocument doc(data);
-        QByteArray datagram = doc.toJson();
+        // 프로토콜 헤더: "POS" (3바이트)
+        stream.writeRawData("POS", 3);
+        
+        // 플레이어 ID 길이와 ID
+        QByteArray idBytes = playerId.toUtf8();
+        quint8 idLength = idBytes.size();
+        stream << idLength;
+        stream.writeRawData(idBytes.constData(), idLength);
+        
+        // 위치 및 게임 상태 데이터
+        stream << (qint32)x << (qint32)y << (qint32)score << (bool)gameOver;
+        
+        // 타임스탬프
+        qint64 sendTime = QDateTime::currentMSecsSinceEpoch();
+        stream << sendTime;
         
         if (datagram.isEmpty()) {
             qDebug() << "Empty datagram generated";
             return;
         }
         
-        // 192.168.10.3~8 범위로 브로드캐스트
-        for (int i = 3; i <= 8; ++i) {
-            QHostAddress address(QString("192.168.10.%1").arg(i));
-            qint64 bytesSent = udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
-            
-            if (bytesSent != datagram.size()) {
-                qDebug() << "Failed to send datagram to" << address.toString();
-            }
+        // 디버그: 전송 시간 로그 (10번에 한 번만)
+        static int sendCount = 0;
+        if (++sendCount % 10 == 0) {
+            qDebug() << "Sending position at" << sendTime << "x:" << x << "y:" << y;
+        }
+        
+        // 브로드캐스트 주소로 전송
+        QHostAddress broadcastAddress("192.168.10.255");
+        qint64 bytesSent = udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
+        
+        if (bytesSent != datagram.size()) {
+            qDebug() << "Failed to send datagram to broadcast address:" << udpSocket->errorString();
         }
     } catch (...) {
         qDebug() << "Exception in updatePlayerPosition";
@@ -1120,6 +1374,9 @@ void GameWindow::readPendingDatagrams()
     if (!udpSocket) return;
     
     try {
+        // 즉시 처리하도록 우선순위 설정
+        QThread::currentThread()->setPriority(QThread::HighPriority);
+        
         while (udpSocket->hasPendingDatagrams()) {
             QByteArray datagram;
             datagram.resize(udpSocket->pendingDatagramSize());
@@ -1129,6 +1386,7 @@ void GameWindow::readPendingDatagrams()
             qint64 bytesRead = udpSocket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
             
             if (bytesRead > 0 && !datagram.isEmpty()) {
+                // 즉시 처리
                 processIncomingData(datagram, sender, senderPort);
             }
         }
@@ -1142,92 +1400,240 @@ void GameWindow::processIncomingData(const QByteArray &data, const QHostAddress 
     if (data.isEmpty()) return;
     
     try {
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+        // 바이너리 프로토콜 처리
+        QDataStream stream(data);
         
-        if (error.error != QJsonParseError::NoError) {
-            qDebug() << "JSON parse error:" << error.errorString();
-            return;
-        }
+        // 프로토콜 헤더 확인
+        char header[3];
+        stream.readRawData(header, 3);
         
-        if (!doc.isObject()) {
-            qDebug() << "JSON document is not an object";
-            return;
-        }
-        
-        QJsonObject obj = doc.object();
-        QString type = obj["type"].toString();
-        
-        if (type == "player_update") {
-            QString playerId = obj["playerId"].toString();
-            
-            // 자신의 데이터는 무시
-            if (playerId == this->playerId) return;
-            
-            PlayerData playerData;
-            playerData.playerId = playerId;
-            playerData.x = obj["x"].toInt();
-            playerData.y = obj["y"].toInt();
-            playerData.score = obj["score"].toInt();
-            playerData.gameOver = obj["gameOver"].toBool();
-            playerData.address = sender;
-            playerData.port = port;
-            playerData.lastSeen = QDateTime::currentMSecsSinceEpoch();
-            
-            // 기존 플레이어 업데이트 또는 새 플레이어 추가
-            bool found = false;
-            for (int i = 0; i < otherPlayers.size(); ++i) {
-                if (otherPlayers[i].playerId == playerId) {
-                    otherPlayers[i] = playerData;
-                    found = true;
-                    break;
-                }
-            }
-            
-            if (!found) {
-                otherPlayers.append(playerData);
-                qDebug() << "New player joined:" << playerId;
-                
-                // 대기실에서 새 플레이어가 들어오면 게임 시작 조건 확인
-                if (isInLobby && !isGameStarted) {
-                    checkGameStart();
-                }
-            }
-        }
-        else if (type == "game_start") {
-            if (!isHost) {
-                countdownValue = obj["countdown"].toInt();
-                qDebug() << "Game countdown started:" << countdownValue;
-            }
-        }
-        else if (type == "countdown") {
-            if (!isHost) {
-                countdownValue = obj["value"].toInt();
-                qDebug() << "Countdown:" << countdownValue;
-            }
-        }
-        else if (type == "game_started") {
-            if (!isHost) {
-                qDebug() << "Game started by host!";
-                isGameStarted = true;
-                isInLobby = false;
-                
-                // 클라이언트는 obstacleTimer를 시작하지 않음 (호스트의 게임 상태를 받아서 동기화)
-            }
-        }
-        else if (type == "game_state") {
-            processGameState(obj);
+        if (strncmp(header, "POS", 3) == 0) {
+            // 위치 업데이트 패킷
+            processPositionPacket(stream, sender, port);
+        } else {
+            // 기존 JSON 프로토콜 처리 (하위 호환성)
+            processJsonData(data, sender, port);
         }
     } catch (...) {
         qDebug() << "Exception in processIncomingData";
     }
 }
 
-void GameWindow::broadcastPlayerData()
+void GameWindow::processPositionPacket(QDataStream &stream, const QHostAddress &sender, quint16 port)
 {
-    if (!isMultiplayerMode || !gameRunning) return;
+    // 플레이어 ID 읽기
+    quint8 idLength;
+    stream >> idLength;
     
-    updatePlayerPosition(player.x(), player.y(), score, false);
+    QByteArray idBytes;
+    idBytes.resize(idLength);
+    stream.readRawData(idBytes.data(), idLength);
+    QString playerId = QString::fromUtf8(idBytes);
+    
+    // 자신의 데이터는 무시
+    if (playerId == this->playerId) return;
+    
+    // 위치 및 게임 상태 데이터 읽기
+    qint32 x, y, score;
+    bool gameOver;
+    qint64 sendTime;
+    
+    stream >> x >> y >> score >> gameOver >> sendTime;
+    
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    qint64 latency = currentTime - sendTime;
+    
+    // 디버그: 수신 시간과 지연 로그 (10번에 한 번만)
+    static int recvCount = 0;
+    if (++recvCount % 10 == 0) {
+        qDebug() << "Received position from" << playerId << "latency:" << latency << "ms x:" << x << "y:" << y;
+    }
+    
+    // 기존 플레이어 업데이트 또는 새 플레이어 추가
+    bool found = false;
+    for (int i = 0; i < otherPlayers.size(); ++i) {
+        if (otherPlayers[i].playerId == playerId) {
+            // 위치를 바로 갱신
+            otherPlayers[i].x = x;
+            otherPlayers[i].y = y;
+            otherPlayers[i].score = score;
+            
+            bool wasGameOver = otherPlayers[i].gameOver;
+            otherPlayers[i].gameOver = gameOver;
+            
+            // 게임 오버 상태가 변경되었을 때 시간 기록
+            if (!wasGameOver && otherPlayers[i].gameOver) {
+                otherPlayers[i].gameOverTime = currentTime;
+                qDebug() << "Player" << otherPlayers[i].playerId << "game over with score:" << otherPlayers[i].score;
+            }
+            
+            otherPlayers[i].address = sender;
+            otherPlayers[i].port = port;
+            otherPlayers[i].lastSeen = currentTime;
+            
+            // 위치 업데이트 후 즉시 화면 갱신
+            update();
+            
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
+        PlayerData playerData;
+        playerData.playerId = playerId;
+        playerData.x = x;
+        playerData.y = y;
+        playerData.score = score;
+        playerData.gameOver = gameOver;
+        
+        // 게임 오버 시간 초기화
+        if (playerData.gameOver) {
+            playerData.gameOverTime = currentTime;
+        } else {
+            playerData.gameOverTime = 0;
+        }
+        
+        playerData.playerName = "";
+        playerData.address = sender;
+        playerData.port = port;
+        playerData.lastSeen = currentTime;
+        
+        otherPlayers.append(playerData);
+        qDebug() << "New player joined:" << playerId;
+        
+        // 새 플레이어 추가 후 즉시 화면 갱신
+        update();
+        
+        // 대기실에서 새 플레이어가 들어오면 게임 시작 조건 확인
+        if (isInLobby && !isGameStarted) {
+            checkGameStart();
+        }
+    }
+}
+
+void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sender, quint16 port)
+{
+    // 기존 JSON 처리 로직 (하위 호환성)
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+    
+    if (error.error != QJsonParseError::NoError) {
+        qDebug() << "JSON parse error:" << error.errorString();
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        qDebug() << "JSON document is not an object";
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    QString type = obj["type"].toString();
+    
+    if (type == "player_update") {
+        // 기존 JSON 위치 업데이트 처리
+        QString playerId = obj["playerId"].toString();
+        
+        // 자신의 데이터는 무시
+        if (playerId == this->playerId) return;
+        
+        qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+        
+        // 기존 플레이어 업데이트 또는 새 플레이어 추가
+        bool found = false;
+        for (int i = 0; i < otherPlayers.size(); ++i) {
+            if (otherPlayers[i].playerId == playerId) {
+                // 위치를 바로 갱신
+                otherPlayers[i].x = obj["x"].toInt();
+                otherPlayers[i].y = obj["y"].toInt();
+                
+                otherPlayers[i].score = obj["score"].toInt();
+                bool wasGameOver = otherPlayers[i].gameOver;
+                otherPlayers[i].gameOver = obj["gameOver"].toBool();
+                
+                // 게임 오버 상태가 변경되었을 때 시간 기록
+                if (!wasGameOver && otherPlayers[i].gameOver) {
+                    otherPlayers[i].gameOverTime = currentTime;
+                    qDebug() << "Player" << otherPlayers[i].playerId << "game over with score:" << otherPlayers[i].score;
+                }
+                
+                // 플레이어 이름 업데이트 (있는 경우)
+                if (obj.contains("playerName")) {
+                    otherPlayers[i].playerName = obj["playerName"].toString();
+                }
+                
+                otherPlayers[i].address = sender;
+                otherPlayers[i].port = port;
+                otherPlayers[i].lastSeen = currentTime;
+                
+                // 위치 업데이트 후 즉시 화면 갱신
+                update();
+                
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            PlayerData playerData;
+            playerData.playerId = playerId;
+            playerData.x = obj["x"].toInt();
+            playerData.y = obj["y"].toInt();
+            playerData.score = obj["score"].toInt();
+            playerData.gameOver = obj["gameOver"].toBool();
+            
+            // 게임 오버 시간 초기화
+            if (playerData.gameOver) {
+                playerData.gameOverTime = currentTime;
+            } else {
+                playerData.gameOverTime = 0;
+            }
+            
+            // 플레이어 이름 설정 (있는 경우)
+            if (obj.contains("playerName")) {
+                playerData.playerName = obj["playerName"].toString();
+            } else {
+                playerData.playerName = "";
+            }
+            
+            playerData.address = sender;
+            playerData.port = port;
+            playerData.lastSeen = currentTime;
+            otherPlayers.append(playerData);
+            qDebug() << "New player joined:" << playerId;
+            
+            // 새 플레이어 추가 후 즉시 화면 갱신
+            update();
+            
+            // 대기실에서 새 플레이어가 들어오면 게임 시작 조건 확인
+            if (isInLobby && !isGameStarted) {
+                checkGameStart();
+            }
+        }
+    }
+    else if (type == "game_start") {
+        if (!isHost) {
+            countdownValue = obj["countdown"].toInt();
+            qDebug() << "Game countdown started:" << countdownValue;
+        }
+    }
+    else if (type == "countdown") {
+        if (!isHost) {
+            countdownValue = obj["value"].toInt();
+            qDebug() << "Countdown:" << countdownValue;
+        }
+    }
+    else if (type == "game_started") {
+        if (!isHost) {
+            qDebug() << "Game started by host!";
+            isGameStarted = true;
+            isInLobby = false;
+        }
+    }
+    else if (type == "game_state") {
+        processGameState(obj);
+    }
 }
 
 void GameWindow::cleanupInactivePlayers()
@@ -1308,10 +1714,8 @@ void GameWindow::checkGameStart()
             QJsonDocument doc(startMsg);
             QByteArray datagram = doc.toJson();
             
-            for (int i = 3; i <= 8; ++i) {
-                QHostAddress address(QString("192.168.10.%1").arg(i));
-                udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
-            }
+            QHostAddress broadcastAddress("192.168.10.255");
+            udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
         }
     }
 }
@@ -1329,10 +1733,8 @@ void GameWindow::startGameCountdown()
         QJsonDocument doc(countdownMsg);
         QByteArray datagram = doc.toJson();
         
-        for (int i = 3; i <= 8; ++i) {
-            QHostAddress address(QString("192.168.10.%1").arg(i));
-            udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
-        }
+        QHostAddress broadcastAddress("192.168.10.255");
+        udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
     } else {
         // 게임 시작
         qDebug() << "Game started!";
@@ -1352,10 +1754,8 @@ void GameWindow::startGameCountdown()
         QJsonDocument doc(startMsg);
         QByteArray datagram = doc.toJson();
         
-        for (int i = 3; i <= 8; ++i) {
-            QHostAddress address(QString("192.168.10.%1").arg(i));
-            udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
-        }
+        QHostAddress broadcastAddress("192.168.10.255");
+        udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
         
         // 호스트가 첫 번째 장애물 생성
         if (isHost) {
@@ -1405,11 +1805,9 @@ void GameWindow::sendGameState()
     QJsonDocument doc(gameState);
     QByteArray datagram = doc.toJson();
     
-    // 모든 클라이언트에게 전송
-    for (int i = 3; i <= 8; ++i) {
-        QHostAddress address(QString("192.168.10.%1").arg(i));
-        udpSocket->writeDatagram(datagram, address, BROADCAST_PORT);
-    }
+    // 브로드캐스트 주소로 전송
+    QHostAddress broadcastAddress("192.168.10.255");
+    udpSocket->writeDatagram(datagram, broadcastAddress, BROADCAST_PORT);
     
     // 디버그 로그는 10번에 한 번만 출력
     static int logCount = 0;
