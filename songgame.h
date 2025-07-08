@@ -23,6 +23,7 @@
 #include <QDebug>
 #include <cmath>
 #include <QSet>
+#include <QColor>
 
 struct NoteData {
     QString lyric;      // 가사
@@ -33,11 +34,30 @@ struct NoteData {
     double endTime;     // 끝 시간 (초)
 };
 
+struct SongInfo {
+    QString name;       // 노래 이름
+    QString filename;   // CSV 파일명
+    QString description; // 노래 설명
+};
+
 struct ObstacleData {
     QRect rect;
     QString lyric;
     QString note;
     int octave;
+};
+
+struct FeedbackData {
+    QString message;
+    QPointF position;
+    double startTime;
+    double duration;
+    QColor color;
+    int fontSize;
+    bool active;
+    
+    FeedbackData(const QString &msg, const QPointF &pos, const QColor &col = Qt::yellow, int size = 24)
+        : message(msg), position(pos), startTime(0.0), duration(1.5), color(col), fontSize(size), active(true) {}
 };
 
 class SongGame : public QMainWindow
@@ -78,6 +98,9 @@ private:
     QVector<ObstacleData> obstacles;
     QSet<int> collidedObstacles; // 충돌한 장애물 추적
     QVector<NoteData> songNotes;
+    QVector<SongInfo> availableSongs; // 사용 가능한 노래 목록
+    int selectedSongIndex; // 선택된 노래 인덱스
+    QVector<FeedbackData> feedbacks; // 피드백 메시지들
     QTimer *gameTimer;
     QTimer *pitchTimer;
     QTimer *countdownTimer;
@@ -97,6 +120,10 @@ private:
     QString currentPlayerName;
     double lastSoundTime; // 마지막 사운드 재생 시간
     
+    // 피드백 시스템 관련 변수들
+    int consecutivePerfect; // 연속 Perfect 횟수
+    double lastFeedbackTime; // 마지막 피드백 시간
+    
     // 노래 데이터
     void setupGame();
     void loadSongData();
@@ -105,6 +132,20 @@ private:
     void startMicProcess();
     void stopMicProcess();
     void playSound(const QString &soundFile);
+    
+    // 노래 선택 관련 함수들
+    void initializeSongs();
+    void showSongSelectionDialog();
+    void selectSong(int index);
+    
+    // 피드백 시스템 관련 함수들
+    void addFeedback(const QString &message, const QPointF &position, const QColor &color = Qt::yellow, int fontSize = 24);
+    void updateFeedbacks();
+    void checkPitchAccuracy();
+    void clearFeedbacks();
+    
+    // 폰트 로딩을 위한 도우미 함수
+    QFont loadSystemFont(const QString &fontName, int size, QFont::Weight weight = QFont::Normal);
     
     // 음정을 Y 좌표로 변환
     int noteToYPosition(const QString &note, int octave);

@@ -8,6 +8,13 @@
 #include <QFile>
 #include <QTextStream>
 #include <cmath>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QFrame>
+#include <QFontDatabase> // QFontDatabase 추가
 
 SongGame::SongGame(QWidget *parent)
     : QMainWindow(parent)
@@ -28,8 +35,14 @@ SongGame::SongGame(QWidget *parent)
     , currentVolume(0.0f)
     , currentPlayerName("")
     , lastSoundTime(0.0)
+    , selectedSongIndex(0) // 기본값: 애국가
+    , consecutivePerfect(0) // 연속 Perfect 횟수 초기화
+    , lastFeedbackTime(0.0) // 마지막 피드백 시간 초기화
 {
     qDebug() << "SongGame constructor called";
+    
+    // 노래 목록 초기화
+    initializeSongs();
     
     // 초기화 과정에서 창이 보이지 않도록 숨김
     hide();
@@ -130,15 +143,11 @@ void SongGame::setupGame()
         player = QRect(50, height()/2 - PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE);
         targetY = height()/2 - PLAYER_SIZE/2;
         
-        // 노래 데이터 로드
-        loadSongData();
-        
-        // 타이머 생성 및 연결
+        // 타이머 생성 및 연결 (아직 시작하지 않음)
         if (!gameTimer) {
             gameTimer = new QTimer(this);
             if (gameTimer) {
                 connect(gameTimer, &QTimer::timeout, this, &SongGame::updateGame);
-                gameTimer->start(8); // 약 120 FPS (더 부드러운 움직임)
             }
         }
         
@@ -146,27 +155,16 @@ void SongGame::setupGame()
             pitchTimer = new QTimer(this);
             if (pitchTimer) {
                 connect(pitchTimer, &QTimer::timeout, this, &SongGame::readPitchData);
-                pitchTimer->start(50); // 20Hz로 피치 읽기
             }
         }
-        
-        // 게임 상태 초기화
-        gameRunning = true;
-        score = INITIAL_SCORE;
-        obstacles.clear();
-        currentNoteIndex = 0;
-        gameTime = 0.0;
-        
-        // 마이크 프로세스 시작
-        startMicProcess();
         
         // 뒤로가기 버튼 설정
         if (!backButton) {
             setupBackButton();
         }
         
-        // 초기 화면 그리기
-        update();
+        // 노래 선택 다이얼로그 표시
+        showSongSelectionDialog();
         
     } catch (const std::exception& e) {
         qDebug() << "Exception in setupGame:" << e.what();
@@ -177,15 +175,21 @@ void SongGame::setupGame()
 
 void SongGame::loadSongData()
 {
-    songNotes = parseCSV("/mnt/nfs/애국가.csv");
-    qDebug() << "Loaded" << songNotes.size() << "notes from song data";
-    
-    // 노트의 시작/끝 시간 계산
-    double currentTime = 0.0;
-    for (int i = 0; i < songNotes.size(); ++i) {
-        songNotes[i].startTime = currentTime;
-        currentTime += songNotes[i].beat * 0.3; // 박자를 0.3초 단위로 변환 (더 빠른 간격)
-        songNotes[i].endTime = currentTime;
+    if (selectedSongIndex >= 0 && selectedSongIndex < availableSongs.size()) {
+        const SongInfo &selectedSong = availableSongs[selectedSongIndex];
+        songNotes = parseCSV(selectedSong.filename);
+        qDebug() << "Loaded" << songNotes.size() << "notes from" << selectedSong.name;
+        
+        // 노트의 시작/끝 시간 계산
+        double currentTime = 0.0;
+        for (int i = 0; i < songNotes.size(); ++i) {
+            songNotes[i].startTime = currentTime;
+            currentTime += songNotes[i].beat * 0.3; // 박자를 0.3초 단위로 변환 (더 빠른 간격)
+            songNotes[i].endTime = currentTime;
+        }
+    } else {
+        qDebug() << "Invalid song index:" << selectedSongIndex;
+        songNotes.clear();
     }
 }
 
@@ -225,10 +229,7 @@ QVector<NoteData> SongGame::parseCSV(const QString &filename)
 
 int SongGame::noteToYPosition(const QString &note, int octave)
 {
-    // 애국가 CSV 파일의 음정을 직접 사용
-    // 예: D2, G2, A2, B2, C3, D3, E3, F3, G3, A3, B3, C4, D4, E4, F4, G4, A4, B4, C5, D5, E5, F5, G5, A5
-    
-    // 음정과 옥타브를 점수로 변환 (간단한 방식)
+    // 음정과 옥타브를 점수로 변환 (더 정확한 방식)
     QMap<QString, int> noteValues;
     noteValues["C"] = 0;
     noteValues["C#"] = 1;
@@ -243,32 +244,353 @@ int SongGame::noteToYPosition(const QString &note, int octave)
     noteValues["A#"] = 10;
     noteValues["B"] = 11;
     
-    // 옥타브별 오프셋
+    // 옥타브별 오프셋 (더 넓은 범위)
     int octaveOffset = (octave - 2) * 12; // 2옥타브를 기준으로
     int noteValue = noteValues.value(note, 0);
     int totalValue = octaveOffset + noteValue;
     
-    // 전체 범위를 화면 높이로 매핑
-    int maxValue = 36; // C5까지
-    int minValue = 0;  // C2부터
+    // 전체 범위를 화면 높이로 매핑 (더 넓은 범위 사용)
+    int maxValue = 48; // C6까지 (더 높은 음)
+    int minValue = -12; // C1까지 (더 낮은 음)
     
     if (totalValue > maxValue) totalValue = maxValue;
     if (totalValue < minValue) totalValue = minValue;
     
+    // 화면 높이를 더 세밀하게 분할
     double normalizedValue = (double)(totalValue - minValue) / (maxValue - minValue);
-    int y = (int)((1.0 - normalizedValue) * (height() - PLAYER_SIZE));
+    int y = (int)((1.0 - normalizedValue) * (height() - PLAYER_SIZE * 2));
     
-    return qBound(0, y, height() - PLAYER_SIZE);
+    // 플레이어 크기를 고려한 여유 공간 확보
+    y = qBound(PLAYER_SIZE, y, height() - PLAYER_SIZE * 2);
+    
+    return y;
+}
+
+void SongGame::addFeedback(const QString &message, const QPointF &position, const QColor &color, int fontSize)
+{
+    FeedbackData feedback(message, position, color, fontSize);
+    feedback.startTime = gameTime;
+    feedbacks.append(feedback);
+    
+    // 최대 5개의 피드백만 유지
+    if (feedbacks.size() > 5) {
+        feedbacks.removeFirst();
+    }
+}
+
+void SongGame::updateFeedbacks()
+{
+    // 시간이 지난 피드백 제거
+    for (int i = feedbacks.size() - 1; i >= 0; --i) {
+        if (gameTime - feedbacks[i].startTime > feedbacks[i].duration) {
+            feedbacks.removeAt(i);
+        }
+    }
+}
+
+void SongGame::checkPitchAccuracy()
+{
+    if (!gameRunning || currentNoteIndex >= songNotes.size()) return;
+    
+    const NoteData &currentNote = songNotes[currentNoteIndex];
+    int targetY = noteToYPosition(currentNote.note, currentNote.octave);
+    int playerY = player.y() + player.height() / 2;
+    
+    // 플레이어가 장애물을 통과하는 시점인지 확인
+    bool passingObstacle = false;
+    for (const ObstacleData &obstacle : obstacles) {
+        // 플레이어가 장애물을 통과하는 순간 (플레이어가 장애물의 오른쪽 끝에 도달했을 때)
+        if (player.x() >= obstacle.rect.x() + obstacle.rect.width() && 
+            player.x() <= obstacle.rect.x() + obstacle.rect.width() + 10) {
+            passingObstacle = true;
+            break;
+        }
+    }
+    
+    if (!passingObstacle) return;
+    
+    // 장애물 통과 성공! (충돌하지 않고 통과했다는 것은 성공)
+    consecutivePerfect++;
+    
+    // 기존 피드백 메시지 모두 제거 (겹침 방지)
+    clearFeedbacks();
+    
+    // 연속 Perfect에 따른 피드백
+    QString message;
+    QColor color;
+    int fontSize;
+    
+    if (consecutivePerfect >= 10) {
+        message = "LEGENDARY!";
+        color = QColor(255, 0, 255); // 마젠타
+        fontSize = 32;
+    } else if (consecutivePerfect >= 7) {
+        message = "AMAZING!";
+        color = QColor(255, 165, 0); // 주황색
+        fontSize = 30;
+    } else if (consecutivePerfect >= 5) {
+        message = "FANTASTIC!";
+        color = QColor(0, 255, 255); // 시안
+        fontSize = 28;
+    } else if (consecutivePerfect >= 3) {
+        message = "EXCELLENT!";
+        color = QColor(0, 255, 0); // 초록색
+        fontSize = 26;
+    } else {
+        message = "PERFECT!";
+        color = QColor(255, 255, 0); // 노란색
+        fontSize = 24;
+    }
+    
+    addFeedback(message, QPointF(player.x() + 50, player.y() - 30), color, fontSize);
+    lastFeedbackTime = gameTime;
+}
+
+void SongGame::clearFeedbacks()
+{
+    feedbacks.clear();
+}
+
+// 폰트 로딩을 위한 도우미 함수
+QFont SongGame::loadSystemFont(const QString &fontName, int size, QFont::Weight weight)
+{
+    QFont font;
+    
+    // 시스템 폰트 디렉토리에서 폰트 로드 시도
+    QString fontPath = QString("/usr/lib/fonts/%1.ttf").arg(fontName);
+    int fontId = QFontDatabase::addApplicationFont(fontPath);
+    
+    if (fontId != -1) {
+        // 폰트 로드 성공
+        QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
+        if (!fontFamilies.isEmpty()) {
+            font = QFont(fontFamilies.first(), size, weight);
+            qDebug() << "Loaded font:" << fontName << "from" << fontPath;
+        }
+    } else {
+        // 폰트 로드 실패 시 시스템 폰트 사용
+        font = QFont(fontName, size, weight);
+        qDebug() << "Using system font:" << fontName;
+    }
+    
+    return font;
+}
+
+void SongGame::initializeSongs()
+{
+    availableSongs.clear();
+    
+    // 애국가
+    SongInfo anthem;
+    anthem.name = "애국가";
+    anthem.filename = "/mnt/nfs/애국가.csv";
+    anthem.description = "대한민국의 국가";
+    availableSongs.append(anthem);
+    
+    // 곰 세마리
+    SongInfo bears;
+    bears.name = "곰 세마리";
+    bears.filename = "/mnt/nfs/song_bears.csv";
+    bears.description = "전래동요";
+    availableSongs.append(bears);
+    
+    // 나비야
+    SongInfo butterfly;
+    butterfly.name = "나비야";
+    butterfly.filename = "/mnt/nfs/song_butterfly.csv";
+    butterfly.description = "전래동요";
+    availableSongs.append(butterfly);
+    
+    qDebug() << "Initialized" << availableSongs.size() << "songs";
+}
+
+void SongGame::showSongSelectionDialog()
+{
+    QDialog *songDialog = new QDialog(this);
+    songDialog->setWindowTitle("노래 선택");
+    songDialog->setFixedSize(400, 300);
+    songDialog->setModal(true);
+    
+    QVBoxLayout *layout = new QVBoxLayout(songDialog);
+    
+    // 제목
+    QLabel *titleLabel = new QLabel("🎵 노래를 선택하세요 🎵", songDialog);
+    titleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont("Arial", 16, QFont::Bold);
+    titleLabel->setFont(titleFont);
+    layout->addWidget(titleLabel);
+    
+    // 노래 목록
+    for (int i = 0; i < availableSongs.size(); ++i) {
+        const SongInfo &song = availableSongs[i];
+        
+        QPushButton *songButton = new QPushButton(songDialog);
+        songButton->setFixedHeight(60);
+        songButton->setText(QString("%1\n%2").arg(song.name).arg(song.description));
+        songButton->setFont(QFont("Arial", 12, QFont::Bold));
+        
+        // 현재 선택된 노래 강조
+        if (i == selectedSongIndex) {
+            songButton->setStyleSheet(
+                "QPushButton {"
+                "   background-color: #4CAF50;"
+                "   color: white;"
+                "   border: 2px solid #45a049;"
+                "   border-radius: 10px;"
+                "   padding: 10px;"
+                "}"
+                "QPushButton:hover {"
+                "   background-color: #45a049;"
+                "}"
+            );
+        } else {
+            songButton->setStyleSheet(
+                "QPushButton {"
+                "   background-color: #f0f0f0;"
+                "   color: black;"
+                "   border: 2px solid #ddd;"
+                "   border-radius: 10px;"
+                "   padding: 10px;"
+                "}"
+                "QPushButton:hover {"
+                "   background-color: #e0e0e0;"
+                "}"
+            );
+        }
+        
+        // 버튼 클릭 이벤트 연결 - 노래 선택만 하고 다이얼로그는 닫지 않음
+        connect(songButton, &QPushButton::clicked, this, [this, i, songDialog, songButton]() {
+            selectSong(i);
+            
+            // 모든 버튼 스타일 초기화
+            for (int j = 0; j < availableSongs.size(); ++j) {
+                QPushButton *btn = songDialog->findChild<QPushButton*>(QString("songButton_%1").arg(j));
+                if (btn) {
+                    btn->setStyleSheet(
+                        "QPushButton {"
+                        "   background-color: #f0f0f0;"
+                        "   color: black;"
+                        "   border: 2px solid #ddd;"
+                        "   border-radius: 10px;"
+                        "   padding: 10px;"
+                        "}"
+                        "QPushButton:hover {"
+                        "   background-color: #e0e0e0;"
+                        "}"
+                    );
+                }
+            }
+            
+            // 선택된 버튼만 강조
+            songButton->setStyleSheet(
+                "QPushButton {"
+                "   background-color: #4CAF50;"
+                "   color: white;"
+                "   border: 2px solid #45a049;"
+                "   border-radius: 10px;"
+                "   padding: 10px;"
+                "}"
+                "QPushButton:hover {"
+                "   background-color: #45a049;"
+                "}"
+            );
+        });
+        
+        // 버튼에 고유한 이름 설정
+        songButton->setObjectName(QString("songButton_%1").arg(i));
+        
+        layout->addWidget(songButton);
+    }
+    
+    // 구분선
+    QFrame *line = new QFrame(songDialog);
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    layout->addWidget(line);
+    
+    // 버튼들
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
+    QPushButton *cancelButton = new QPushButton("취소", songDialog);
+    QPushButton *startButton = new QPushButton("게임 시작", songDialog);
+    
+    cancelButton->setFont(QFont("Arial", 12));
+    startButton->setFont(QFont("Arial", 12, QFont::Bold));
+    startButton->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #2196F3;"
+        "   color: white;"
+        "   border: none;"
+        "   border-radius: 5px;"
+        "   padding: 10px 20px;"
+        "}"
+        "QPushButton:hover {"
+        "   background-color: #1976D2;"
+        "}"
+    );
+    
+    buttonLayout->addWidget(cancelButton);
+    buttonLayout->addWidget(startButton);
+    layout->addLayout(buttonLayout);
+    
+    // 버튼 연결
+    connect(cancelButton, &QPushButton::clicked, songDialog, &QDialog::reject);
+    connect(startButton, &QPushButton::clicked, songDialog, &QDialog::accept);
+    
+    // 다이얼로그 실행
+    if (songDialog->exec() == QDialog::Accepted) {
+        // 게임 시작
+        loadSongData();
+        // 게임 상태 초기화
+        gameRunning = true;
+        score = 0;
+        currentNoteIndex = 0;
+        gameTime = 0.0;
+        lastSoundTime = 0.0;
+        obstacles.clear();
+        collidedObstacles.clear();
+        
+        // 피드백 시스템 초기화
+        consecutivePerfect = 0;
+        lastFeedbackTime = 0.0;
+        clearFeedbacks();
+        
+        // 타이머 시작
+        if (gameTimer) gameTimer->start(8); // 120 FPS
+        if (pitchTimer) pitchTimer->start(50); // 20Hz
+        
+        // 마이크 프로세스 시작
+        startMicProcess();
+        
+        update();
+    } else {
+        // 취소 시 메인 윈도우로 돌아가기
+        close();
+    }
+    
+    songDialog->deleteLater();
+}
+
+void SongGame::selectSong(int index)
+{
+    if (index >= 0 && index < availableSongs.size()) {
+        selectedSongIndex = index;
+        qDebug() << "Selected song:" << availableSongs[index].name;
+    }
 }
 
 void SongGame::createObstacleFromNote(const NoteData &note)
 {
     int noteY = noteToYPosition(note.note, note.octave);
     
-    // 장애물을 노트의 Y 위치에 맞춰 생성
+    // 장애물을 노트의 Y 위치에 맞춰 생성 (더 정확한 위치)
     int gapY = noteY;
-    int minGapY = OBSTACLE_GAP/2 + PLAYER_SIZE + 20;
-    int maxGapY = height() - OBSTACLE_GAP/2 - PLAYER_SIZE - 20;
+    
+    // 장애물 간격을 더 좁게 조정하여 음정 차이가 더 명확하게 드러나도록
+    int adjustedGap = OBSTACLE_GAP - 50; // 간격을 50px 줄임
+    
+    int minGapY = adjustedGap/2 + PLAYER_SIZE + 30;
+    int maxGapY = height() - adjustedGap/2 - PLAYER_SIZE - 30;
     
     // 범위 조정
     if (gapY < minGapY) gapY = minGapY;
@@ -276,7 +598,7 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     
     // 위쪽 장애물
     ObstacleData topObstacle;
-    topObstacle.rect = QRect(width(), 0, OBSTACLE_WIDTH, gapY - OBSTACLE_GAP/2);
+    topObstacle.rect = QRect(width(), 0, OBSTACLE_WIDTH, gapY - adjustedGap/2);
     topObstacle.lyric = note.lyric;
     topObstacle.note = note.note;
     topObstacle.octave = note.octave;
@@ -284,7 +606,7 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     
     // 아래쪽 장애물
     ObstacleData bottomObstacle;
-    bottomObstacle.rect = QRect(width(), gapY + OBSTACLE_GAP/2, OBSTACLE_WIDTH, height() - (gapY + OBSTACLE_GAP/2));
+    bottomObstacle.rect = QRect(width(), gapY + adjustedGap/2, OBSTACLE_WIDTH, height() - (gapY + adjustedGap/2));
     bottomObstacle.lyric = note.lyric;
     bottomObstacle.note = note.note;
     bottomObstacle.octave = note.octave;
@@ -322,52 +644,45 @@ void SongGame::updateGame()
         player.translate(0, PLAYER_SPEED);
     }
     
-    // 장애물 이동 및 제거 - 성능 최적화
-    const int leftBoundary = 0;
-    const int cleanupMargin = 100; // 화면 밖 여유 공간
-    
+    // 장애물 이동 및 충돌 검사
     for (int i = obstacles.size() - 1; i >= 0; --i) {
         ObstacleData &obstacle = obstacles[i];
         obstacle.rect.translate(-OBSTACLE_SPEED, 0);
         
-        // 화면 밖으로 충분히 나간 장애물 제거
-        if (obstacle.rect.x() + obstacle.rect.width() < leftBoundary - cleanupMargin) {
-            // 장애물이 화면에서 사라질 때 충돌 기록에서 제거
-            collidedObstacles.remove(i);
+        // 화면 밖으로 나간 장애물 제거
+        if (obstacle.rect.x() + obstacle.rect.width() < 0) {
             obstacles.removeAt(i);
+            score++;
         }
     }
     
-    // 충돌 검사 최적화 - 플레이어 주변 장애물만 검사
-    bool collisionOccurred = false;
-    const int playerCenterX = player.x() + player.width() / 2;
-    const int collisionRange = 200; // 충돌 검사 범위
+    // 피드백 시스템 업데이트
+    updateFeedbacks();
+    checkPitchAccuracy();
     
-    for (int i = 0; i < obstacles.size(); ++i) {
-        const ObstacleData &obstacle = obstacles[i];
-        
-        // 플레이어와 가까운 장애물만 검사
-        if (qAbs(obstacle.rect.x() - playerCenterX) > collisionRange) {
-            continue;
-        }
-        
-        if (!collidedObstacles.contains(i) && player.intersects(obstacle.rect)) {
-            collidedObstacles.insert(i);
-            collisionOccurred = true;
-            break; // 한 번에 하나의 충돌만 처리
-        }
-    }
-    
-    if (collisionOccurred) {
-        score -= PENALTY_PER_HIT;
-        if (score < 0) {
-            score = 0;
-        }
-        
-        // 사운드 재생 제한 (0.5초마다 한 번씩만)
-        if (gameTime - lastSoundTime > 0.5) {
-            playSound("/mnt/nfs/wav/scratch.wav");
-            lastSoundTime = gameTime;
+    // 충돌 검사
+    for (const ObstacleData &obstacle : obstacles) {
+        if (player.intersects(obstacle.rect)) {
+            score -= PENALTY_PER_HIT;
+            if (score < 0) {
+                score = 0;
+            }
+            
+            // 연속 Perfect 카운터 리셋
+            consecutivePerfect = 0;
+            
+            // 기존 피드백 메시지 모두 제거
+            clearFeedbacks();
+            
+            // 충돌 피드백 표시
+            addFeedback("MISS!", QPointF(player.x() + 50, player.y() - 30), QColor(255, 0, 0), 20);
+            
+            // 사운드 재생 제한 (0.5초마다 한 번씩만)
+            if (gameTime - lastSoundTime > 0.5) {
+                playSound("/mnt/nfs/wav/scratch.wav");
+                lastSoundTime = gameTime;
+            }
+            break;
         }
     }
     
@@ -488,21 +803,32 @@ void SongGame::paintEvent(QPaintEvent *event)
         
         // 장애물에 가사 표시 (충분히 큰 장애물에만 표시)
         if (h > 30) { // 더 작은 장애물에도 가사 표시
+            // 음정 정보 (먼저 그리기 - 배경)
+            QString noteText = QString("%1%2").arg(obstacle.note).arg(obstacle.octave);
+            
+            // 음정 배경 그리기 (먼저 그리기)
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 0, 0, 150)); // 반투명 검은색
+            int bgWidth = REAL_PILLAR_WIDTH / 2; // 가로 길이를 절반으로 줄임
+            int bgX = x + (REAL_PILLAR_WIDTH - bgWidth) / 2; // 중앙 정렬
+            QRect noteBgRect(bgX, y + h/2 + 25, bgWidth, 25);
+            painter.drawRoundedRect(noteBgRect, 5, 5);
+            
+            // 음정 텍스트 그리기
+            painter.setPen(Qt::yellow); // 노란색으로 음정 표시
+            painter.setFont(QFont("Arial", 18, QFont::Bold));
+            QRect noteRect(bgX, y + h/2 + 30, bgWidth, 20);
+            painter.drawText(noteRect, Qt::AlignCenter, noteText);
+            
+            // 가사 텍스트 (나중에 그리기 - 위에 표시)
             painter.setPen(Qt::white);
             painter.setFont(QFont("Arial", 30, QFont::Bold));
             
-            // 가사 텍스트
             QString lyricText = obstacle.lyric;
             if (!lyricText.isEmpty()) {
-                QRect textRect(x, y + h/2 - 15, REAL_PILLAR_WIDTH, 30);
+                QRect textRect(x, y + h/2 - 40, REAL_PILLAR_WIDTH, 40); // 높이를 40으로 증가
                 painter.drawText(textRect, Qt::AlignCenter, lyricText);
             }
-            
-            // 음정 정보 (작은 글씨로)
-            QString noteText = QString("%1%2").arg(obstacle.note).arg(obstacle.octave);
-            painter.setFont(QFont("Arial", 20));
-            QRect noteRect(x, y + h/2 + 15, REAL_PILLAR_WIDTH, 20);
-            painter.drawText(noteRect, Qt::AlignCenter, noteText);
         }
     }
     
@@ -517,27 +843,95 @@ void SongGame::paintEvent(QPaintEvent *event)
     painter.setPen(Qt::white);
     
     // 점수 표시
-    QString scoreText = QString("Score: %1").arg(score);
-    painter.drawText(10, 25, scoreText);
+    painter.setPen(Qt::white);
+    painter.setFont(loadSystemFont("CookieRun Bold", 16, QFont::Bold));
+    painter.drawText(10, 30, QString("Score: %1").arg(score));
+    
+    // 피드백 메시지들 그리기
+    for (const FeedbackData &feedback : feedbacks) {
+        if (!feedback.active) continue;
+        
+        // 시간에 따른 투명도 계산
+        double elapsed = gameTime - feedback.startTime;
+        double alpha = 1.0 - (elapsed / feedback.duration);
+        alpha = qBound(0.0, alpha, 1.0);
+        
+        // 색상에 투명도 적용
+        QColor textColor = feedback.color;
+        textColor.setAlphaF(alpha);
+        painter.setPen(textColor);
+        
+        // 폰트 설정
+        QFont feedbackFont = loadSystemFont("CookieRun Bold", feedback.fontSize, QFont::Bold);
+        painter.setFont(feedbackFont);
+        
+        // 텍스트 그림자 효과
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawText(feedback.position + QPointF(2, 2), feedback.message);
+        
+        // 메인 텍스트
+        painter.setPen(textColor);
+        painter.drawText(feedback.position, feedback.message);
+    }
+    
+    // 연속 Perfect 카운터 표시
+    if (consecutivePerfect > 0) {
+        painter.setPen(Qt::white);
+        QFont counterFont = loadSystemFont("CookieRun Bold", 14, QFont::Bold);
+        painter.setFont(counterFont);
+        
+        QString counterText = QString("Perfect x%1").arg(consecutivePerfect);
+        painter.setPen(QColor(255, 255, 0)); // 노란색
+        
+        painter.drawText(10, 60, counterText);
+    }
     
     // 현재 노트 정보 표시
     if (currentNoteIndex < songNotes.size()) {
         const NoteData &currentNote = songNotes[currentNoteIndex];
-        QString noteText = QString("Current Note: %1%2").arg(currentNote.note).arg(currentNote.octave);
+        
+        // 음정 정보 (더 큰 글씨로)
+        QString noteText = QString("Note: %1%2").arg(currentNote.note).arg(currentNote.octave);
+        painter.setFont(QFont("Arial", 14, QFont::Bold));
+        painter.setPen(Qt::yellow);
         painter.drawText(10, 45, noteText);
+        
+        // 가사 정보
         QString lyricText = QString("Lyric: %1").arg(currentNote.lyric);
+        painter.setFont(QFont("Arial", 12));
+        painter.setPen(Qt::white);
         painter.drawText(10, 65, lyricText);
+        
+        // 다음 노트 정보 (미리보기)
+        if (currentNoteIndex + 1 < songNotes.size()) {
+            const NoteData &nextNote = songNotes[currentNoteIndex + 1];
+            QString nextNoteText = QString("Next: %1%2").arg(nextNote.note).arg(nextNote.octave);
+            painter.setFont(QFont("Arial", 10));
+            painter.setPen(Qt::gray);
+            painter.drawText(10, 85, nextNoteText);
+        }
+    }
+    
+    // 현재 노래 정보 표시
+    if (selectedSongIndex >= 0 && selectedSongIndex < availableSongs.size()) {
+        const SongInfo &currentSong = availableSongs[selectedSongIndex];
+        QString songText = QString("Song: %1").arg(currentSong.name);
+        painter.setFont(QFont("Arial", 12, QFont::Bold));
+        painter.setPen(Qt::cyan);
+        painter.drawText(10, 105, songText);
     }
     
     // 게임 시간 표시
     QString timeText = QString("Time: %1").arg(QString::number(gameTime, 'f', 1));
-    painter.drawText(10, 85, timeText);
+    painter.setFont(QFont("Arial", 12));
+    painter.setPen(Qt::white);
+    painter.drawText(10, 125, timeText);
     
     // 진행률 표시
     if (!songNotes.isEmpty()) {
         double progress = (double)currentNoteIndex / songNotes.size() * 100.0;
         QString progressText = QString("Progress: %1%").arg(QString::number(progress, 'f', 1));
-        painter.drawText(10, 105, progressText);
+        painter.drawText(10, 145, progressText);
     }
 }
 
@@ -555,8 +949,7 @@ void SongGame::gameOver()
 {
     gameRunning = false;
     
-    stopMicProcess();
-    
+    // 타이머 정지
     if (gameTimer) {
         gameTimer->stop();
     }
@@ -564,7 +957,10 @@ void SongGame::gameOver()
         pitchTimer->stop();
     }
     
-    // 게임 오버 메시지
+    // 피드백 시스템 정리
+    clearFeedbacks();
+    
+    // 게임 오버 다이얼로그 표시
     QString message;
     if (score > 0) {
         message = QString("🎵 노래 게임 완주! 🎵\n\n"
