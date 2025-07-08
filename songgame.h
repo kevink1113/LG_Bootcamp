@@ -84,14 +84,15 @@ private slots:
 private:
     // 게임 상수
     static const int PLAYER_SIZE = 30;
-    static const int OBSTACLE_WIDTH = 120; // 두께 증가
-    static const int OBSTACLE_GAP = 150;
+    static const int OBSTACLE_WIDTH = 80; // 두께 증가
+    static const int OBSTACLE_GAP = 120; // 갭을 더 크게 조정 (기존 80에서 120으로)
     static const int WINDOW_WIDTH = 1024;
     static const int WINDOW_HEIGHT = 600;
     static const int PLAYER_SPEED = 10;
-    static const int OBSTACLE_SPEED = 10; // 속도 증가
+    static const int OBSTACLE_SPEED = 10; // 속도를 더 빠르게 조정 (기존 3에서 8로)
     static const int INITIAL_SCORE = 100;
-    static const int PENALTY_PER_HIT = 5;
+    static const int PENALTY_PER_HIT = 10; // 감점을 10점으로 조정
+    static const int PERFECT_BONUS = 5; // Perfect 시 보너스 점수
 
     // 게임 상태
     QRect player;

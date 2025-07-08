@@ -179,14 +179,14 @@ void SongGame::loadSongData()
         const SongInfo &selectedSong = availableSongs[selectedSongIndex];
         songNotes = parseCSV(selectedSong.filename);
         qDebug() << "Loaded" << songNotes.size() << "notes from" << selectedSong.name;
-        
-        // 노트의 시작/끝 시간 계산
-        double currentTime = 0.0;
-        for (int i = 0; i < songNotes.size(); ++i) {
-            songNotes[i].startTime = currentTime;
-            currentTime += songNotes[i].beat * 0.3; // 박자를 0.3초 단위로 변환 (더 빠른 간격)
-            songNotes[i].endTime = currentTime;
-        }
+    
+    // 노트의 시작/끝 시간 계산
+    double currentTime = 0.0;
+    for (int i = 0; i < songNotes.size(); ++i) {
+        songNotes[i].startTime = currentTime;
+        currentTime += songNotes[i].beat * 0.2; // 박자를 0.15초 단위로 변환 (더 빠른 간격)
+        songNotes[i].endTime = currentTime;
+    }
     } else {
         qDebug() << "Invalid song index:" << selectedSongIndex;
         songNotes.clear();
@@ -311,6 +311,9 @@ void SongGame::checkPitchAccuracy()
     
     // 장애물 통과 성공! (충돌하지 않고 통과했다는 것은 성공)
     consecutivePerfect++;
+    
+    // Perfect 보너스 점수 추가
+    score += PERFECT_BONUS;
     
     // 기존 피드백 메시지 모두 제거 (겹침 방지)
     clearFeedbacks();
@@ -543,7 +546,7 @@ void SongGame::showSongSelectionDialog()
         loadSongData();
         // 게임 상태 초기화
         gameRunning = true;
-        score = 0;
+        score = INITIAL_SCORE; // 100점에서 시작
         currentNoteIndex = 0;
         gameTime = 0.0;
         lastSoundTime = 0.0;
@@ -586,8 +589,8 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     // 장애물을 노트의 Y 위치에 맞춰 생성 (더 정확한 위치)
     int gapY = noteY;
     
-    // 장애물 간격을 더 좁게 조정하여 음정 차이가 더 명확하게 드러나도록
-    int adjustedGap = OBSTACLE_GAP - 50; // 간격을 50px 줄임
+    // 장애물 간격을 더 크게 조정하여 통과하기 쉽게
+    int adjustedGap = OBSTACLE_GAP + 40; // 간격을 40px 늘림 (통과하기 쉽게)
     
     int minGapY = adjustedGap/2 + PLAYER_SIZE + 30;
     int maxGapY = height() - adjustedGap/2 - PLAYER_SIZE - 30;
@@ -652,7 +655,6 @@ void SongGame::updateGame()
         // 화면 밖으로 나간 장애물 제거
         if (obstacle.rect.x() + obstacle.rect.width() < 0) {
             obstacles.removeAt(i);
-            score++;
         }
     }
     
@@ -663,10 +665,10 @@ void SongGame::updateGame()
     // 충돌 검사
     for (const ObstacleData &obstacle : obstacles) {
         if (player.intersects(obstacle.rect)) {
-            score -= PENALTY_PER_HIT;
-            if (score < 0) {
-                score = 0;
-            }
+        score -= PENALTY_PER_HIT;
+        if (score < 0) {
+            score = 0;
+        }
             
             // 연속 Perfect 카운터 리셋
             consecutivePerfect = 0;
@@ -676,11 +678,11 @@ void SongGame::updateGame()
             
             // 충돌 피드백 표시
             addFeedback("MISS!", QPointF(player.x() + 50, player.y() - 30), QColor(255, 0, 0), 20);
-            
-            // 사운드 재생 제한 (0.5초마다 한 번씩만)
-            if (gameTime - lastSoundTime > 0.5) {
-                playSound("/mnt/nfs/wav/scratch.wav");
-                lastSoundTime = gameTime;
+        
+        // 사운드 재생 제한 (0.5초마다 한 번씩만)
+        if (gameTime - lastSoundTime > 0.5) {
+            playSound("/mnt/nfs/wav/scratch.wav");
+            lastSoundTime = gameTime;
             }
             break;
         }
@@ -962,16 +964,28 @@ void SongGame::gameOver()
     
     // 게임 오버 다이얼로그 표시
     QString message;
-    if (score > 0) {
+    QString songName = availableSongs[selectedSongIndex].name;
+    
+    if (score >= 100) {
         message = QString("🎵 노래 게임 완주! 🎵\n\n"
                          "최종 점수: %1점\n"
-                         "애국가를 성공적으로 완주했습니다!\n\n"
-                         "축하합니다! 🎉").arg(score);
+                         "%2을(를) 성공적으로 완주했습니다!\n\n"
+                         "축하합니다! 🎉").arg(score).arg(songName);
+    } else if (score >= 80) {
+        message = QString("🎵 노래 게임 완주! 🎵\n\n"
+                         "최종 점수: %1점\n"
+                         "%2을(를) 완주했습니다!\n\n"
+                         "잘했어요! 👍").arg(score).arg(songName);
+    } else if (score >= 60) {
+        message = QString("🎵 노래 게임 완주! 🎵\n\n"
+                         "최종 점수: %1점\n"
+                         "%2을(를) 완주했습니다!\n\n"
+                         "다음에는 더 잘할 수 있을 거예요! 💪").arg(score).arg(songName);
     } else {
         message = QString("게임 종료\n\n"
                          "최종 점수: %1점\n"
-                         "애국가를 완주했지만 점수가 부족합니다.\n\n"
-                         "다시 도전해보세요! 💪").arg(score);
+                         "%2을(를) 완주했지만 점수가 부족합니다.\n\n"
+                         "다시 도전해보세요! 💪").arg(score).arg(songName);
     }
     
     QMessageBox::information(this, "노래 게임 종료", message);
