@@ -8,12 +8,6 @@ GameOverDialog::GameOverDialog(int score, const QString &playerName, QWidget *pa
     setFixedSize(600, 400);  // 다이얼로그 크기 증가
     setupUI(score, playerName);
     
-    // 플레이어가 선택되었고 점수가 0보다 크면 자동으로 랭킹에 등록
-    if (!playerName.isEmpty() && playerName != "No Player Selected" && score > 0) {
-        RankingDialog tempDialog(score, playerName, this);
-        scoreAdded = true;  // 점수가 추가되었음을 표시
-    }
-    
     // 다이얼로그를 화면 중앙에 위치하되, 비모달로 설정
     setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
     setModal(false);  // 비모달로 설정하여 부모 윈도우 이벤트 허용
@@ -180,8 +174,14 @@ void GameOverDialog::onRankingButtonClicked()
         rankingDialog = nullptr;
     }
     
-    // 랭킹 다이얼로그 생성 (점수는 이미 자동으로 등록되었으므로 랭킹만 표시)
-    rankingDialog = new RankingDialog(this);
+    // 점수가 아직 추가되지 않았다면 점수와 함께 랭킹 다이얼로그 생성
+    // 이미 추가되었다면 점수 없이 랭킹만 표시
+    if (!scoreAdded) {
+        rankingDialog = new RankingDialog(currentScore, this);
+        scoreAdded = true;  // 점수가 추가되었음을 표시
+    } else {
+        rankingDialog = new RankingDialog(this);  // 점수 추가 없이 랭킹만 표시
+    }
     
     if (rankingDialog) {
         rankingDialog->exec();
