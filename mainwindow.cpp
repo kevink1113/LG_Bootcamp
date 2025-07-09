@@ -40,7 +40,7 @@ MainWindow::MainWindow(QWidget *parent) :
     gameWindowCreationTimer(nullptr),
     buttonCooldownTimer(nullptr),
     isButtonCooldownActive(false),
-    backgroundPixmap("/mnt/nfs/backgroundinit.png"),
+    backgroundPixmap("/mnt/sd/resources/backgroundinit.png"),
     titleLabelY(130),
     titleLabel(nullptr) // 제목 라벨 멤버 초기화
 {
@@ -54,7 +54,7 @@ MainWindow::MainWindow(QWidget *parent) :
     rankingButton = new QPushButton(this);
     rankingButton->setFixedSize(70, 70);  // playerButton과 같은 크기로 변경
     // trophy.png 아이콘을 rankingButton에 적용 (가운데 정렬)
-    QPixmap trophyPixmap("/mnt/nfs/trophy.png");
+    QPixmap trophyPixmap("/mnt/sd/resources/trophy.png");
     if (!trophyPixmap.isNull()) {
         QIcon trophyIcon(trophyPixmap.scaled(70, 70, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         rankingButton->setIcon(trophyIcon);
@@ -69,7 +69,7 @@ MainWindow::MainWindow(QWidget *parent) :
     playerButton = new QPushButton(this);
     playerButton->setFixedSize(70, 70);
     // playerset.png 아이콘을 playerButton에 적용 (가운데 정렬)
-    QPixmap playerPixmap("/mnt/nfs/playerset.png");
+    QPixmap playerPixmap("/mnt/sd/resources/playerset.png");
     if (!playerPixmap.isNull()) {
         QIcon playerIcon(playerPixmap.scaled(60, 60, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         playerButton->setIcon(playerIcon);
@@ -201,7 +201,7 @@ MainWindow::MainWindow(QWidget *parent) :
     newMenuButton3->setFixedSize(350, 180);
     
     // Menu1 버튼 설정
-    QPixmap button1Pixmap("/mnt/nfs/button1.png");
+    QPixmap button1Pixmap("/mnt/sd/resources/button1.png");
     if (!button1Pixmap.isNull()) {
         QIcon button1Icon(button1Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
         newMenuButton1->setText("싱글플레이");
@@ -214,7 +214,7 @@ MainWindow::MainWindow(QWidget *parent) :
             "   text-align: center;"
             "   padding: 0px;"
             "   margin: 0px;"
-            "   background-image: url(/mnt/nfs/button1.png);"
+            "   background-image: url(/mnt/sd/resources/button1.png);"
             "   background-repeat: no-repeat;"
             "   background-position: center;"
             "   background-size: 200px 100px;"
@@ -229,7 +229,7 @@ MainWindow::MainWindow(QWidget *parent) :
     }
     
     // Menu2 버튼 설정
-    QPixmap button2Pixmap("/mnt/nfs/button2.png");
+    QPixmap button2Pixmap("/mnt/sd/resources/button2.png");
     if (!button2Pixmap.isNull()) {
         QIcon button2Icon(button2Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
         newMenuButton2->setText("멀티플레이");
@@ -242,7 +242,7 @@ MainWindow::MainWindow(QWidget *parent) :
             "   text-align: center;"
             "   padding: 0px;"
             "   margin: 0px;"
-            "   background-image: url(/mnt/nfs/button2.png);"
+            "   background-image: url(/mnt/sd/resources/button2.png);"
             "   background-repeat: no-repeat;"
             "   background-position: center;"
             "   background-size: 200px 100px;"
@@ -257,7 +257,7 @@ MainWindow::MainWindow(QWidget *parent) :
     }
     
     // Menu3 버튼 설정
-    QPixmap button3Pixmap("/mnt/nfs/button3.png");
+    QPixmap button3Pixmap("/mnt/sd/resources/button3.png");
     if (!button3Pixmap.isNull()) {
         QIcon button3Icon(button3Pixmap.scaled(QSize(200, 100), Qt::KeepAspectRatio, Qt::SmoothTransformation));
         newMenuButton3->setText("싱어롱");
@@ -270,7 +270,7 @@ MainWindow::MainWindow(QWidget *parent) :
             "   text-align: center;"
             "   padding: 0px;"
             "   margin: 0px;"
-            "   background-image: url(/mnt/nfs/button3.png);"
+            "   background-image: url(/mnt/sd/resources/button3.png);"
             "   background-repeat: no-repeat;"
             "   background-position: center;"
             "   background-size: 200px 100px;"
@@ -1215,7 +1215,7 @@ void MainWindow::startBackgroundMusic()
         backgroundMusicRestartTimer->start(100);
     });
     
-    backgroundMusicProcess->start("./aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+    backgroundMusicProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << "/mnt/sd/resources/wav/background.wav");
     
     if (backgroundMusicProcess->waitForStarted(1000)) {
         qDebug() << "Background music started with aplay.";
@@ -1232,7 +1232,7 @@ void MainWindow::startBackgroundMusic()
             backgroundMusicRestartTimer->start(100);
         });
         
-        backgroundMusicProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << "/mnt/nfs/wav/background.wav");
+        backgroundMusicProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << "/mnt/sd/resources/wav/background.wav");
         
         if (backgroundMusicProcess->waitForStarted(1000)) {
             qDebug() << "Background music started with absolute path aplay.";

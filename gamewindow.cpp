@@ -365,11 +365,11 @@ void GameWindow::setupGame()
         const int PLAYER_DISPLAY_SIZE = PLAYER_SIZE * 3; // 기존보다 3배 크게
         if (!playerImageLoaded) {
             QPixmap rawPixmap;
-            if (rawPixmap.load("/mnt/nfs/player2.png")) {
+            if (rawPixmap.load("/mnt/sd/resources/player2.png")) {
                 cachedPlayerPixmap = rawPixmap.scaled(PLAYER_DISPLAY_SIZE, PLAYER_DISPLAY_SIZE, Qt::KeepAspectRatio, Qt::FastTransformation);
-                qDebug() << "Player image loaded and cached from /mnt/nfs/player2.png (3x size)";
+                qDebug() << "Player image loaded and cached from /mnt/sd/resources/player2.png (3x size)";
             } else {
-                qDebug() << "Failed to load player image from /mnt/nfs/player2.png";
+                qDebug() << "Failed to load player image from /mnt/sd/resources/player2.png";
             }
             playerImageLoaded = true;
         }
@@ -498,7 +498,7 @@ void GameWindow::paintEvent(QPaintEvent *event)
     static QPixmap bgPixmap;
     static bool bgLoaded = false;
     if (!bgLoaded) {
-        bgPixmap.load("/mnt/nfs/background.png");
+        bgPixmap.load("/mnt/sd/resources/background.png");
         if (!bgPixmap.isNull()) {
             bgPixmap = bgPixmap.scaled(size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
         }
@@ -563,9 +563,9 @@ void GameWindow::paintEvent(QPaintEvent *event)
     if (!pipeImagesLoaded) {
         qDebug() << "Loading pipe images with OBSTACLE_WIDTH:" << OBSTACLE_WIDTH;
         QPixmap originalTopCap, originalBottomCap, originalMiddleBody;
-        originalTopCap.load("/mnt/nfs/pipe_top_cap.png");
-        originalBottomCap.load("/mnt/nfs/pipe_bottom_cap.png");
-        originalMiddleBody.load("/mnt/nfs/pipe_middle_body.png");
+        originalTopCap.load("/mnt/sd/resources/pipe_top_cap.png");
+        originalBottomCap.load("/mnt/sd/resources/pipe_bottom_cap.png");
+        originalMiddleBody.load("/mnt/sd/resources/pipe_middle_body.png");
         
         // OBSTACLE_WIDTH에 맞게 스케일링
         if (!originalTopCap.isNull()) {
@@ -889,7 +889,7 @@ void GameWindow::updateGame()
             score += 3;  // 별 획득 시 3점 추가
             
             // 별 획득 사운드 재생 - QProcess 재사용 패턴
-            playSound("/mnt/nfs/wav/item.wav");
+            playSound("/mnt/sd/resources/wav/item.wav");
         }
     }
     
@@ -1129,7 +1129,7 @@ void GameWindow::showMultiplayerResults()
 void GameWindow::spawnObstacles()
 {
     if (!gameRunning) return;
-    
+    int obstacleShowed = 0;
     // 멀티플레이어 모드에서만 게임 시작 상태 체크 (호스트와 클라이언트 모두)
     if (isMultiplayerMode) {
         if (!isGameStarted) return;
@@ -1202,7 +1202,7 @@ bool GameWindow::checkCollision()
         
         if (player.intersects(topObstacle) || player.intersects(bottomObstacle)) {
             // 충돌 소리 재생
-            playSound("/mnt/nfs/wav/scratch.wav");
+            playSound("/mnt/sd/resources/wav/scratch.wav");
             return true;
         }
     }
@@ -1363,7 +1363,7 @@ void GameWindow::playSound(const QString &soundFile)
     
     // 새 프로세스 시작
     soundProcess = new QProcess(this);
-    soundProcess->start("./aplay", QStringList() << "-Dhw:0,0" << soundFile);
+    soundProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << soundFile);
     
     // 시작 실패 시 절대 경로로 재시도
     if (!soundProcess->waitForStarted(300)) {
@@ -1371,7 +1371,7 @@ void GameWindow::playSound(const QString &soundFile)
         delete soundProcess;
         
         soundProcess = new QProcess(this);
-        soundProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << soundFile);
+        soundProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << soundFile);
         
         if (!soundProcess->waitForStarted(300)) {
             qDebug() << "Failed to play sound with absolute path too.";
@@ -1854,7 +1854,7 @@ void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sen
             qDebug() << "Game started by host!";
             isGameStarted = true;
             isInLobby = false;
-            
+            int obstacleShowed = 0;
             // 호스트의 게임 시작 시간을 받아서 동기화
             if (obj.contains("startTime")) {
                 gameStartTime = obj["startTime"].toVariant().toLongLong();
@@ -1866,7 +1866,11 @@ void GameWindow::processJsonData(const QByteArray &data, const QHostAddress &sen
                 obstacleTimer->start(1800);
             }
             // 즉시 첫 번째 장애물 생성
-            spawnObstacles();
+            if(obstacleShowed)
+            {
+                spawnObstacles();
+                ++obstacleShowed;
+            }
         }
     }
     else if (type == "game_state") {
@@ -1922,7 +1926,7 @@ void GameWindow::leaveLobby()
 void GameWindow::checkGameStart()
 {
     if (!isInLobby || isGameStarted) return;
-    
+    int obstacleShowed = 0;
     // 최소 2명 이상이면 즉시 게임 시작 (카운트다운 없이)
     int totalPlayers = otherPlayers.size() + 1;
     if (totalPlayers >= 2) {
@@ -1952,7 +1956,11 @@ void GameWindow::checkGameStart()
             if (obstacleTimer && !obstacleTimer->isActive()) {
                 obstacleTimer->start(1800);
             }
-            spawnObstacles();
+            if (obstacleShowed == 1)
+            {
+                spawnObstacles();
+                ++obstacleShowed;
+            }
         }
     }
 }

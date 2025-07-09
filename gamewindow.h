@@ -126,6 +126,7 @@ private:
     void checkGameStart();
     void calculateRankings(); // 순위 계산 함수 추가
     void showMultiplayerResults(); // 멀티플레이어 결과 표시 함수 추가
+    void determineHost(); // 호스트 선정 함수 추가
 
 
     QTimer *gameTimer;
@@ -159,6 +160,7 @@ private:
     // 멀티플레이어 순위 관련 멤버들
     bool isGameFinished; // 전체 게임이 끝났는지 여부
     int myRank; // 내 순위
+    int obstacleShowed; // 장애물 생성 카운터 (멀티플레이어 동기화용)
     
     QRect player;
     QVector<QRect> obstacles;  // QList 대신 QVector 사용

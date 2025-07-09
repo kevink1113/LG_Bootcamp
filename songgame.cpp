@@ -386,21 +386,21 @@ void SongGame::initializeSongs()
     // 애국가
     SongInfo anthem;
     anthem.name = "애국가";
-    anthem.filename = "/mnt/nfs/애국가.csv";
+    anthem.filename = "/mnt/sd/resources/애국가.csv";
     anthem.description = "대한민국의 국가";
     availableSongs.append(anthem);
     
     // 곰 세마리
     SongInfo bears;
     bears.name = "곰 세마리";
-    bears.filename = "/mnt/nfs/song_bears.csv";
+    bears.filename = "/mnt/sd/resources/song_bears.csv";
     bears.description = "전래동요";
     availableSongs.append(bears);
     
     // 나비야
     SongInfo butterfly;
     butterfly.name = "나비야";
-    butterfly.filename = "/mnt/nfs/song_butterfly.csv";
+    butterfly.filename = "/mnt/sd/resources/song_butterfly.csv";
     butterfly.description = "전래동요";
     availableSongs.append(butterfly);
     
@@ -681,7 +681,7 @@ void SongGame::updateGame()
         
         // 사운드 재생 제한 (0.5초마다 한 번씩만)
         if (gameTime - lastSoundTime > 0.5) {
-            playSound("/mnt/nfs/wav/scratch.wav");
+            playSound("/mnt/sd/resources/wav/scratch.wav");
             lastSoundTime = gameTime;
             }
             break;
@@ -746,7 +746,7 @@ void SongGame::paintEvent(QPaintEvent *event)
     static QSize lastBgSize;
     if (bgPixmap.isNull() || lastBgSize != size()) {
         QPixmap rawBg;
-        if (rawBg.load("/mnt/nfs/background.png")) {
+        if (rawBg.load("/mnt/sd/resources/background.png")) {
             bgPixmap = rawBg.scaled(size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
             lastBgSize = size();
         } else {
@@ -764,7 +764,7 @@ void SongGame::paintEvent(QPaintEvent *event)
     static QMap<int, QPixmap> scaledPillarCache; // 높이별 스케일된 이미지 캐싱
     
     if (pillarPixmap.isNull()) {
-        pillarPixmap.load("/mnt/nfs/brick_pillar.png");
+        pillarPixmap.load("/mnt/sd/resources/brick_pillar.png");
     }
     
     const int REAL_PILLAR_WIDTH = 100; // 실제 두께 증가
@@ -1066,13 +1066,13 @@ void SongGame::playSound(const QString &soundFile)
     });
     
     // aplay 실행
-    soundProcess->start("./aplay", QStringList() << "-Dhw:0,0" << soundFile);
+    soundProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << soundFile);
     
     if (!soundProcess->waitForStarted(300)) {
         qDebug() << "Failed to play sound. Trying absolute path...";
         
         // 절대 경로로 시도
-        soundProcess->start("/usr/bin/aplay", QStringList() << "-Dhw:0,0" << soundFile);
+        soundProcess->start("/root/aplay", QStringList() << "-Dhw:0,0" << soundFile);
         
         if (!soundProcess->waitForStarted(300)) {
             qDebug() << "Failed to play sound with absolute path too.";
