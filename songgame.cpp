@@ -386,7 +386,7 @@ void SongGame::initializeSongs()
     // 애국가
     SongInfo anthem;
     anthem.name = "애국가";
-    anthem.filename = "/mnt/sd/resources/애국가.csv";
+    anthem.filename = "/mnt/sd/resources/song.csv";
     anthem.description = "대한민국의 국가";
     availableSongs.append(anthem);
     
@@ -417,7 +417,7 @@ void SongGame::showSongSelectionDialog()
     QVBoxLayout *layout = new QVBoxLayout(songDialog);
     
     // 제목
-    QLabel *titleLabel = new QLabel("🎵 노래를 선택하세요 🎵", songDialog);
+    QLabel *titleLabel = new QLabel("노래를 선택하세요", songDialog);
     titleLabel->setAlignment(Qt::AlignCenter);
     QFont titleFont("Arial", 16, QFont::Bold);
     titleLabel->setFont(titleFont);
@@ -608,12 +608,14 @@ void SongGame::createObstacleFromNote(const NoteData &note)
     obstacles.append(topObstacle);
     
     // 아래쪽 장애물
-    ObstacleData bottomObstacle;
-    bottomObstacle.rect = QRect(width(), gapY + adjustedGap/2, OBSTACLE_WIDTH, height() - (gapY + adjustedGap/2));
-    bottomObstacle.lyric = note.lyric;
-    bottomObstacle.note = note.note;
-    bottomObstacle.octave = note.octave;
-    obstacles.append(bottomObstacle);
+    if (note.octave > 1) {
+        ObstacleData bottomObstacle;
+        bottomObstacle.rect = QRect(width(), gapY + adjustedGap/2, OBSTACLE_WIDTH, height() - (gapY + adjustedGap/2));
+        bottomObstacle.lyric = note.lyric;
+        bottomObstacle.note = note.note;
+        bottomObstacle.octave = note.octave;
+        obstacles.append(bottomObstacle);
+    }
 }
 
 void SongGame::updateGame()

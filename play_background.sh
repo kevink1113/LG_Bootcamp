@@ -3,7 +3,7 @@
 # Make executable with: chmod +x play_background.sh
 
 # Define variables
-AUDIO_FILE="/mnt/nfs/wav/background.wav"
+AUDIO_FILE="/mnt/sd/resources/wav/background.wav"
 DEVICE="hw:0,0"
 
 # Clean up any existing aplay instances for this file
