@@ -251,7 +251,7 @@ void GameWindow::setupGame()
         obstacleTimer = new QTimer(this);
         if (obstacleTimer) {
             connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
-            obstacleTimer->start(1800); // 1.8초마다 장애물 생성 (1.5초에서 변경)
+            obstacleTimer->start(2500); // 2.5초마다 장애물 생성 (더 여유롭게)
         }
     }
     
@@ -311,10 +311,10 @@ void GameWindow::setupGame()
         
         if (!obstacleTimer) {
             obstacleTimer = new QTimer(this);
-            if (obstacleTimer) {
-                connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
-                obstacleTimer->start(1800); // 1.8초마다 장애물 생성 (1.5초에서 변경)
-            }
+                    if (obstacleTimer) {
+            connect(obstacleTimer, &QTimer::timeout, this, &GameWindow::spawnObstacles);
+            obstacleTimer->start(2500); // 2.5초마다 장애물 생성 (더 여유롭게)
+        }
         }
         
         if (!pitchTimer) {
@@ -921,7 +921,7 @@ void GameWindow::updateGame()
     if (score >= lastDifficultyCheck + 20) {
         lastDifficultyCheck = score;
         int difficultyLevel = score / 50; // 50점마다 난이도 증가
-        int spawnInterval = qMax(1200, 2500 - difficultyLevel * 150); // 2500ms -> 1200ms까지 감소
+        int spawnInterval = qMax(1800, 3500 - difficultyLevel * 200); // 3.5초 -> 1.8초까지 감소(더 여유롭게)
         
         if (obstacleTimer && obstacleTimer->isActive()) {
             obstacleTimer->setInterval(spawnInterval);
